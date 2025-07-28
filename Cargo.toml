@@ -1,0 +1,31 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/agent",
+    "crates/gui",
+    "crates/protocol",
+]
+
+[workspace.package]
+version = "0.4.0"
+edition = "2024"
+repository = "https://github.com/vswarte/fs-camera"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+agent = { path = "crates/agent", version = "0.4.0", package = "agent" }
+gui = { path = "crates/gui", version = "0.4.0", package = "gui" }
+protocol = { path = "crates/protocol", version = "0.4.0", package = "protocol" }
+thiserror = "1"
+dll-syringe = { version = "0.16", features = ["rpc-payload", "payload-utils"] }
+nalgebra = "0.33"
+nalgebra-glm = "0.19"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "z"
+
+[patch.crates-io]
+libudis86-sys = { git = 'https://github.com/vars1ty/libudis86-sys.git' }

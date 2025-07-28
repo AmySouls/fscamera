@@ -1,0 +1,10 @@
+[package]
+name = "protocol"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+thiserror.workspace = true
+nalgebra.workspace = true
+nalgebra-glm.workspace = true
