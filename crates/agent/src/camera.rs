@@ -1,7 +1,7 @@
 use std::{sync::atomic::Ordering, time::Duration};
 
-use eldenring_util::{input, singleton::get_instance};
-use fromsoft_shared::{F32Vector4, OwnedPtr, Program};
+use eldenring_util::{input};
+use fromsoft_shared::{F32Vector4, OwnedPtr, Program, get_instance};
 use nalgebra_glm as glm;
 use pelite::pe::Pe;
 use protocol::{
@@ -88,7 +88,8 @@ impl CameraManager {
                 minutes,
                 seconds,
             } => {
-                let Some(world_area_time) = unsafe { get_instance::<WorldAreaTime>() }.unwrap()
+                let world_area_time = unsafe { get_instance::<WorldAreaTime>() };
+                let Some(world_area_time) = world_area_time
                 else {
                     return;
                 };

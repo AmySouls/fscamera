@@ -15,8 +15,8 @@ use windows::Win32::{
     },
 };
 
-use eldenring_util::{input, singleton::get_instance};
-use fromsoft_shared::{F32Vector4, OwnedPtr, Program};
+use eldenring_util::input;
+use fromsoft_shared::{F32Vector4, OwnedPtr, Program, get_instance};
 use nalgebra_glm::{self as glm, Mat3, Mat4, Vec3, Vec4};
 
 use crate::{game::{get_offsets, CSCamera, FieldArea, MapId}, input::Input};
@@ -183,7 +183,7 @@ impl Freecam {
         };
 
         if self.active
-            && let Some(camera) = unsafe { get_instance::<CSCamera>() }.unwrap()
+            && let Some(camera) = unsafe { get_instance::<CSCamera>() }
             && let Some(field_area) = field_area.as_ref()
             && let Some(block_info) = field_area
                 .world_info_owner
@@ -213,7 +213,8 @@ impl Freecam {
         let program = Program::current();
         let offsets = get_offsets(&program).unwrap();
 
-        let Some(cs_camera) = unsafe { get_instance::<CSCamera>() }.unwrap() else {
+        let cs_camera = unsafe { get_instance::<CSCamera>() };
+        let Some(cs_camera) = cs_camera else {
             return Err(FreecamError::AcquireCSCamera);
         };
 
@@ -294,7 +295,6 @@ impl Freecam {
 pub fn is_game_focused() -> bool {
     let game_hwnd = HWND(
         unsafe { get_instance::<CSWindowImp>() }
-            .unwrap()
             .unwrap()
             .window_handle as _,
     );

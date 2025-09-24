@@ -11,12 +11,12 @@ use eldenring::cs::CSTaskImp;
 use eldenring::cs::CSWindowImp;
 use eldenring::fd4::FD4TaskData;
 use eldenring::position::PositionDelta;
-use eldenring_util::singleton::get_instance;
 use eldenring_util::task::CSTaskImpExt;
-use fromsoft_shared::{arxan, OwnedPtr, Program};
+use fromsoft_shared::{arxan, OwnedPtr, Program, get_instance};
 use game::get_offsets;
 use game::CSCamera;
 use game::CSFlipperImp;
+use game::WorldChrMan;
 use game::FieldArea;
 use game::FreecamMode;
 use game::MoveMapStep;
@@ -53,56 +53,60 @@ mod keyframe;
 
 dll_syringe::payload_procedure! {
     fn snapshot_camera_state() -> Result<CameraState, RemoteError> {
-        let program = Program::current();
-        let offsets = get_offsets(&program).map_err(|e| e.clone())?;
+        unsafe {
 
-        let Some(cs_camera) = unsafe { get_instance::<game::CSCamera>() }.unwrap() else {
-            return Err(RemoteError::AcquireCSCamera);
-        };
+            let program = Program::current();
+            let offsets = get_offsets(&program).map_err(|e| e.clone())?;
 
-        let field_area = unsafe { transmute::<u64, OwnedPtr<Option<OwnedPtr<FieldArea>>>>(program.rva_to_va(offsets.field_area).unwrap()) };
-        let Some(field_area) = field_area.as_ref() else {
-            return Err(RemoteError::AcquireFieldArea)
-        };
+            let Some(cs_camera) = get_instance::<CSCamera>() else {
+                return Err(RemoteError::AcquireCSCamera);
+            };
 
-        let field_area = field_area.as_ref();
-        let map_id = field_area.map_id;
-        let Some(world_block_info) = field_area.world_info_owner.world_block_info_by_map(&map_id) else {
-            return Err(RemoteError::AcquireWorldBlockInfo)
-        };
+            let field_area = transmute::<u64, OwnedPtr<Option<OwnedPtr<FieldArea>>>>(program.rva_to_va(offsets.field_area).unwrap());
+            let Some(field_area) = field_area.as_ref() else {
+                return Err(RemoteError::AcquireFieldArea)
+            };
 
-        let block_pos = cs_camera.pers_cam_1.position() - world_block_info.physics_center;
-        let position = Vec3::new(
-            block_pos.0,
-            block_pos.1,
-            block_pos.2,
-        );
+            let field_area = field_area.as_ref();
+            let map_id = field_area.map_id;
+            let Some(world_block_info) = field_area.world_info_owner.world_block_info_by_map(&map_id) else {
+                return Err(RemoteError::AcquireWorldBlockInfo)
+            };
 
-        let orientation = {
-            let PositionDelta(rx, ry, rz) = cs_camera.pers_cam_1.right();
-            let PositionDelta(ux, uy, uz) = cs_camera.pers_cam_1.up();
-            let PositionDelta(fx, fy, fz) = cs_camera.pers_cam_1.forward();
+            let block_pos = cs_camera.pers_cam_1.position() - world_block_info.physics_center;
+            let position = Vec3::new(
+                block_pos.0,
+                block_pos.1,
+                block_pos.2,
+            );
 
-            let rotation = Mat3::from_rows(&[
-                RowVector3::new(rx, ry, rz),
-                RowVector3::new(ux, uy, uz),
-                RowVector3::new(fx, fy, fz),
-            ]);
+            let orientation = {
+                let PositionDelta(rx, ry, rz) = cs_camera.pers_cam_1.right();
+                let PositionDelta(ux, uy, uz) = cs_camera.pers_cam_1.up();
+                let PositionDelta(fx, fy, fz) = cs_camera.pers_cam_1.forward();
 
-            glm::mat3_to_quat(&rotation)
-        };
+                let rotation = Mat3::from_rows(&[
+                    RowVector3::new(rx, ry, rz),
+                    RowVector3::new(ux, uy, uz),
+                    RowVector3::new(fx, fy, fz),
+                ]);
 
-        let euler = glm::quat_euler_angles(&orientation);
-        Ok(CameraState {
-            map_id: world_block_info.map_id.into(),
-            position,
-            orientation: Orientation(
-                euler.x,
-                euler.y,
-                euler.z,
-            ),
-            fov: cs_camera.pers_cam_1.fov,
-        })
+                glm::mat3_to_quat(&rotation)
+            };
+
+            let euler = glm::quat_euler_angles(&orientation);
+            Ok(CameraState {
+                map_id: world_block_info.map_id.into(),
+                position,
+                orientation: Orientation(
+                    euler.x,
+                    euler.y,
+                    euler.z,
+                ),
+                fov: cs_camera.pers_cam_1.fov,
+            })
+
+        }
     }
 }
 
@@ -154,7 +158,7 @@ dll_syringe::payload_procedure! {
 
         let mut camera_manager = CameraManager::default();
         let mut input = input::Input::default();
-        let cs_task = unsafe { get_instance::<CSTaskImp>() }.unwrap().unwrap();
+        let cs_task = unsafe { get_instance::<CSTaskImp>() }.unwrap();
 
         // Keep track of delta time between task execution as we'll be messing with the one offered
         // by the game.
@@ -178,7 +182,8 @@ dll_syringe::payload_procedure! {
                 }
 
                 // Camera's isn't necessarily there and we've got nothing to do in such a situation.
-                let Some(cs_camera) = unsafe { get_instance::<CSCamera>() }.unwrap() else {
+                let cs_camera = unsafe { get_instance::<CSCamera>() };
+                let Some(cs_camera) = cs_camera else {
                     return;
                 };
 
@@ -194,12 +199,14 @@ dll_syringe::payload_procedure! {
 
                 // CSFlipper is responsible for flipping the framebuffer so it should be available if
                 // we're rendering stuff...
-                let Some(cs_flipper) = unsafe { get_instance::<CSFlipperImp>() }.unwrap() else {
+                let cs_flipper = unsafe { get_instance::<CSFlipperImp>() };
+                let Some(cs_flipper) = cs_flipper else {
                     return;
                 };
 
                 // WorldChrMan is responsible for managing characters including our main player
-                let Some(world_chr_man) = unsafe { get_instance::<game::WorldChrMan>() }.unwrap() else {
+                let world_chr_man = unsafe { get_instance::<WorldChrMan>() };
+                let Some(world_chr_man) = world_chr_man else {
                     return;
                 };
 

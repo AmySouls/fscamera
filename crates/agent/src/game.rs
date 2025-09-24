@@ -1,4 +1,4 @@
-use std::{fmt::Display, ptr::NonNull, sync::LazyLock};
+use std::{borrow::Cow, fmt::Display, ptr::NonNull, sync::LazyLock};
 
 use eldenring::{cs::CSPersCam, position::HavokPosition, Tree};
 use fromsoft_shared::{OwnedPtr, Program};
@@ -100,7 +100,7 @@ pub(crate) fn get_offsets(program: &Program) -> Result<&'static GameOffsets, &'s
 
 #[repr(C)]
 /// Source of name: RTTI
-#[dlrf::singleton("CSCamera")]
+#[fromsoft_shared::singleton("CSCamera")]
 pub struct CSCamera {
     pub pers_cam_1: OwnedPtr<CSPersCam>,
     pub pers_cam_2: OwnedPtr<CSPersCam>,
@@ -120,14 +120,14 @@ pub struct CSCamera {
 }
 
 #[repr(C)]
-#[dlrf::singleton("CSFlipper")]
+#[fromsoft_shared::singleton("CSFlipper")]
 pub struct CSFlipperImp {
     unk0: [u8; 0x2D4],
     pub time_multiplier: f32,
 }
 
 #[repr(C)]
-#[dlrf::singleton("WorldAreaTime")]
+#[fromsoft_shared::singleton("WorldAreaTime")]
 pub struct WorldAreaTime {
     unk0: [u8; 0x28],
     pub request_hour: u32,
@@ -390,7 +390,7 @@ impl Display for MapId {
 }
 
 #[repr(C)]
-#[dlrf::singleton("WorldChrMan")]
+#[fromsoft_shared::singleton("WorldChrMan")]
 pub struct WorldChrMan {
     unk0: [u8; 0x174e8],
     pub main_player: Option<OwnedPtr<ChrIns>>,

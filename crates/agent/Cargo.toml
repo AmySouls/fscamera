@@ -22,6 +22,7 @@ nalgebra.workspace = true
 nalgebra-glm.workspace = true
 thiserror.workspace = true
 gilrs.workspace = true
+from-singleton = "2"
 
 [dependencies.windows]
 version = "0.61.3"

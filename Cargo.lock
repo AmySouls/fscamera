@@ -133,6 +133,7 @@ dependencies = [
  "dll-syringe",
  "eldenring",
  "eldenring-util",
+ "from-singleton",
  "fromsoftware-shared",
  "gilrs",
  "log",
@@ -1497,7 +1498,8 @@ dependencies = [
 [[package]]
 name = "from-singleton"
 version = "2.0.1"
-source = "git+https://github.com/Dasaav-dsv/from-singleton#088daee427c282f5e21b7e0766349ce789a4e6f3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39817769d3f0ec454107f15c8d65e34b77e183b401c9f76bd46329528c7b82bc"
 dependencies = [
  "pelite",
  "regex",
