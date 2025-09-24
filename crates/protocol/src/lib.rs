@@ -2,6 +2,8 @@ use keyframe::{Keyframe, Quat, Vec3};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::keyframe::Orientation;
+
 pub mod keyframe;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,6 +21,10 @@ pub enum InboundGameControlEvent {
     HudState { hidden: bool },
     SetCharacterNoDead { value: bool },
     SetCharacterNoMove { value: bool },
+    SetFreecamMovementSpeed { value: f32 },
+    SetFreecamRotationSpeed { value: f32 },
+    SetDebugPause { enabled: bool },
+    SetFreecamEnabled { enabled: bool },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -30,11 +36,11 @@ pub enum OutboundGameControlEvent {
 pub struct CameraState {
     pub map_id: i32,
     pub position: Vec3,
-    pub orientation: Quat,
+    pub orientation: Orientation,
     pub fov: f32,
 }
 
-#[derive(Debug, Error, Serialize, Deserialize)]
+#[derive(Clone, Debug, Error, Serialize, Deserialize)]
 pub enum RemoteError {
     #[error("Game or version of game is not supported.")]
     UnknownGame,
@@ -56,12 +62,34 @@ pub enum RemoteError {
     AcquireWorldChrMan,
 }
 
-#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SettingsData {
     pub apply_gamespeed_only_when_playback_mode_active: bool,
     pub enabling_playback_disables_freecam: bool,
     pub playback_start_restarts_path: bool,
     pub keybinds: Vec<Keybind>,
+}
+
+impl Default for SettingsData {
+    fn default() -> Self {
+        Self {
+            apply_gamespeed_only_when_playback_mode_active: Default::default(),
+            enabling_playback_disables_freecam: Default::default(),
+            playback_start_restarts_path: Default::default(),
+            keybinds: vec![
+                Keybind {
+                    action: KeybindAction::TogglePlaybackMode,
+                    active: true,
+                    input: Some(KeybindInput::Keyboard(0x73)), // F4
+                },
+                Keybind {
+                    action: KeybindAction::ToggleFreecam,
+                    active: true,
+                    input: Some(KeybindInput::Keyboard(0x78)), // F9
+                },
+            ],
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -87,7 +115,9 @@ pub enum KeybindAction {
     SetFov(f32),
     AdjustFov(f32),
     SetGameSpeed(f32),
-    AdjustGamespeed(f32)
+    AdjustGamespeed(f32),
+    ToggleDebugPause,
+    ToggleFreecam,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -66,12 +66,16 @@ impl From<glm::Quat> for Quat {
     }
 }
 
+/// Orientation (pitch, yaw, roll)
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Orientation(pub f32, pub f32, pub f32);
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Keyframe {
     pub time: f32,
     pub map_id: i32,
     pub position: Vec3,
-    pub orientation: Quat,
+    pub orientation: Orientation,
     pub fov: f32,
     pub tension: f32,
 }

@@ -9,8 +9,6 @@ pub(crate) fn prompt_and_load_keyframes() -> Option<Vec<Keyframe>> {
     let data = std::fs::read_to_string(file).ok()?;
     let data = serde_json::from_str::<SaveFormat>(&data).ok()?;
     Some(data.to_current())
-
-
 }
 
 pub(crate) fn prompt_and_save_keyframes(keyframes: &[Keyframe]) -> std::io::Result<()> {

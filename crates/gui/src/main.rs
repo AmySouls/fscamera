@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use app::CameraControlApp;
 use eframe::egui::ViewportBuilder;
 

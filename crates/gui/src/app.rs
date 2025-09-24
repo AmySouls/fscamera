@@ -1,6 +1,4 @@
-use std::f32::consts::PI;
-
-use crate::controls::{drag_angle, drag_angle_signed, drag_percentage, drag_percentage_delta};
+use crate::controls::{drag_angle, drag_angle_signed, drag_percentage, drag_percentage_delta, drag_pitch};
 use crate::process::{self, GameProcess, RemoteGame};
 use crate::program_title;
 use crate::save::{prompt_and_load_keyframes, prompt_and_save_keyframes};
@@ -8,11 +6,8 @@ use crate::settings::{get_settings, save_settings};
 use eframe::egui::{self, CentralPanel, ComboBox, DragValue, Key, TopBottomPanel};
 use egui::{Color32, Pos2, Rect, Sense, Vec2};
 use egui_notify::Toasts;
-use protocol::keyframe::{Keyframe, Quat, Vec3};
-use protocol::{
-    InboundGameControlEvent, Keybind, KeybindAction, KeybindInput, OutboundGameControlEvent,
-    SettingsData,
-};
+use protocol::keyframe::{Keyframe, Orientation, Quat, Vec3};
+use protocol::{InboundGameControlEvent, Keybind, KeybindAction, KeybindInput, OutboundGameControlEvent, SettingsData};
 
 pub(crate) struct CameraControlApp {
     process: Option<GameProcess>,
@@ -35,6 +30,10 @@ pub(crate) struct CameraControlApp {
     disable_hud: bool,
     playback_time: f32,
     last_update: Option<std::time::Instant>,
+    freecam_movement_speed: f32,
+    freecam_rotation_speed: f32,
+    debug_pause: bool,
+    freecam_enabled: bool,
 
     character_no_dead: bool,
     character_no_move: bool,
@@ -72,6 +71,10 @@ impl Default for CameraControlApp {
             disable_hud: false,
             playback_time: 0.0,
             last_update: None,
+            freecam_movement_speed: 1.0,
+            freecam_rotation_speed: 1.0,
+            debug_pause: false,
+            freecam_enabled: false,
 
             character_no_dead: false,
             character_no_move: false,
@@ -98,21 +101,21 @@ impl eframe::App for CameraControlApp {
             // Need this here to re-request for poll_events as well as timeline visual updates.
             ctx.request_repaint();
 
-            if let Ok(events) = remote.poll_events() {
-                for event in events {
-                    match event {
-                        OutboundGameControlEvent::KeybindAction(action) => {
-                            self.handle_keybind_action(&action)
-                        }
-                    }
-                }
-            } else {
-                self.notify.error(
-                    "Could not poll events from remote. Reattach to game please.".to_string(),
-                );
-                self.remote = None;
-                self.playing = false;
-            }
+            // if let Ok(events) = remote.poll_events() {
+            //     for event in events {
+            //         match event {
+            //             OutboundGameControlEvent::KeybindAction(action) => {
+            //                 self.handle_keybind_action(&action)
+            //             }
+            //         }
+            //     }
+            // } else {
+            //     self.notify.error(
+            //         "Could not poll events from remote. Reattach to game please.".to_string(),
+            //     );
+            //     self.remote = None;
+            //     self.playing = false;
+            // }
         }
 
         self.notify.show(ctx);
@@ -131,7 +134,11 @@ impl CameraControlApp {
             KeybindAction::SetFov(fov) => self.set_fov(fov),
             KeybindAction::AdjustFov(fov) => self.set_fov(&(self.global_fov + fov)),
             KeybindAction::SetGameSpeed(multiplier) => self.set_gamespeed(multiplier),
-            KeybindAction::AdjustGamespeed(multiplier) => self.set_gamespeed(&(self.gamespeed_multiplier + multiplier)),
+            KeybindAction::AdjustGamespeed(multiplier) => {
+                self.set_gamespeed(&(self.gamespeed_multiplier + multiplier))
+            }
+            KeybindAction::ToggleDebugPause => self.toggle_debug_pause(),
+            KeybindAction::ToggleFreecam => self.toggle_freecam(),
         }
     }
 
@@ -250,10 +257,10 @@ impl CameraControlApp {
             let mut caught_input = None;
             if let Some(ref action) = self.waiting_for_keybind_input {
                 for key in Key::ALL {
-                    if ctx.input(|i| i.key_pressed(*key)) {
-                        if let Some(key) = egui_key_to_vk(*key) {
-                            caught_input = Some(KeybindInput::Keyboard(key));
-                        }
+                    if ctx.input(|i| i.key_pressed(*key))
+                        && let Some(key) = egui_key_to_vk(*key)
+                    {
+                        caught_input = Some(KeybindInput::Keyboard(key));
                     }
                 }
 
@@ -266,8 +273,7 @@ impl CameraControlApp {
 
         if flush_settings {
             if let Err(e) = save_settings(&self.settings) {
-                self.notify
-                    .error(format!("Could not save settings: {e}"));
+                self.notify.error(format!("Could not save settings: {e}"));
             } else {
                 self.playing = false;
             }
@@ -316,18 +322,18 @@ impl CameraControlApp {
 
                 ui.separator();
 
-                if ui.button("💾 Save").clicked() {
-                    if let Err(err) = prompt_and_save_keyframes(&self.keyframes) {
-                        self.notify.error(format!("Could not save file: {err}"));
-                    }
+                if ui.button("💾 Save").clicked()
+                    && let Err(err) = prompt_and_save_keyframes(&self.keyframes)
+                {
+                    self.notify.error(format!("Could not save file: {err}"));
                 }
 
-                if ui.button("📂 Load").clicked() {
-                    if let Some(loaded) = prompt_and_load_keyframes() {
-                        self.keyframes = loaded;
-                        self.selected_index = None;
-                        return;
-                    }
+                if ui.button("📂 Load").clicked()
+                    && let Some(loaded) = prompt_and_load_keyframes()
+                {
+                    self.keyframes = loaded;
+                    self.selected_index = None;
+                    return;
                 }
 
                 ui.separator();
@@ -364,7 +370,7 @@ impl CameraControlApp {
                 }
 
                 if ui
-                    .checkbox(&mut self.playback_mode_active, "Playback mode")
+                    .checkbox(&mut self.playback_mode_active, "Playback")
                     .changed()
                 {
                     if !self.playback_mode_active {
@@ -391,6 +397,19 @@ impl CameraControlApp {
                     }
                 }
 
+                if ui
+                    .checkbox(&mut self.freecam_enabled, "Freecam")
+                        .changed() &&
+                        let Err(e) = self.remote.as_ref().unwrap().post_event(
+                            InboundGameControlEvent::SetFreecamEnabled {
+                                enabled: self.freecam_enabled,
+                            },
+                        ) {
+                            self.notify
+                                .error(format!("Could not toggle freecam remotely: {e}"));
+                }
+
+
                 ui.separator();
 
                 if ui.button("⚙ Settings").clicked() {
@@ -406,83 +425,118 @@ impl CameraControlApp {
 
             ui.horizontal(|ui| {
                 if drag_percentage(ui, "Game speed", &mut self.gamespeed_multiplier, true).changed()
-                {
-                    if let Err(e) = self.remote.as_ref().unwrap().post_event(
+                    && let Err(e) = self.remote.as_ref().unwrap().post_event(
                         InboundGameControlEvent::TimeMultiplier {
                             multiplier: self.gamespeed_multiplier,
                         },
-                    ) {
-                        self.notify
-                            .error(format!("Could not change game speed: {e}"));
-                    }
+                    )
+                {
+                    self.notify
+                        .error(format!("Could not change game speed: {e}"));
                 }
 
                 ui.separator();
-                if ui.checkbox(&mut self.override_fov, "").changed() {
-                    if let Err(e) = self.remote.as_ref().unwrap().post_event(
+                if ui.checkbox(&mut self.override_fov, "").changed()
+                    && let Err(e) = self.remote.as_ref().unwrap().post_event(
                         InboundGameControlEvent::GlobalFov {
                             fov: self.global_fov,
                             enabled: self.override_fov,
                         },
-                    ) {
-                        self.notify
-                            .error(format!("Could not change global FOV: {e}"));
-                    }
+                    )
+                {
+                    self.notify
+                        .error(format!("Could not change global FOV: {e}"));
                 }
 
-                if drag_angle(ui, "", &mut self.global_fov).changed() {
-                    if let Err(e) = self.remote.as_ref().unwrap().post_event(
+                if drag_angle(ui, "", &mut self.global_fov).changed()
+                    && let Err(e) = self.remote.as_ref().unwrap().post_event(
                         InboundGameControlEvent::GlobalFov {
                             fov: self.global_fov,
                             enabled: self.override_fov,
                         },
-                    ) {
-                        self.notify
-                            .error(format!("Could not change global FOV: {e}"));
-                    }
+                    )
+                {
+                    self.notify
+                        .error(format!("Could not change global FOV: {e}"));
                 }
                 ui.label("Global FOV");
 
                 ui.separator();
 
-                if ui.checkbox(&mut self.disable_hud, "Disable HUD").changed() {
-                    if let Err(e) = self.remote.as_ref().unwrap().post_event(
+                if ui.checkbox(&mut self.disable_hud, "Disable HUD").changed()
+                    && let Err(e) = self.remote.as_ref().unwrap().post_event(
                         InboundGameControlEvent::HudState {
                             hidden: self.disable_hud,
                         },
-                    ) {
-                        self.notify.error(format!("Could not disable HUD: {e}"));
-                    }
+                    )
+                {
+                    self.notify.error(format!("Could not disable HUD: {e}"));
                 }
             });
 
             ui.separator();
 
             ui.horizontal(|ui| {
-                if ui.checkbox(&mut self.character_no_dead, "No Dead").changed() {
-                    if let Err(e) =
-                        self.remote
-                            .as_ref()
-                            .unwrap()
-                            .post_event(InboundGameControlEvent::SetCharacterNoDead {
-                                value: self.character_no_dead
-                            })
-                    {
-                        self.notify.error(format!("Could not enable no dead: {e}"));
-                    }
+                if ui
+                    .checkbox(&mut self.character_no_dead, "No Dead")
+                    .changed()
+                    && let Err(e) = self.remote.as_ref().unwrap().post_event(
+                        InboundGameControlEvent::SetCharacterNoDead {
+                            value: self.character_no_dead,
+                        },
+                    )
+                {
+                    self.notify.error(format!("Could not enable no dead: {e}"));
                 }
 
-                if ui.checkbox(&mut self.character_no_move, "Disable character movement").changed() {
-                    if let Err(e) =
-                        self.remote
-                            .as_ref()
-                            .unwrap()
-                            .post_event(InboundGameControlEvent::SetCharacterNoMove {
-                                value: self.character_no_move
-                            })
-                    {
-                        self.notify.error(format!("Could not enable no move: {e}"));
-                    }
+                if ui
+                    .checkbox(&mut self.character_no_move, "Disable character movement")
+                    .changed()
+                    && let Err(e) = self.remote.as_ref().unwrap().post_event(
+                        InboundGameControlEvent::SetCharacterNoMove {
+                            value: self.character_no_move,
+                        },
+                    )
+                {
+                    self.notify.error(format!("Could not enable no move: {e}"));
+                }
+            });
+
+            ui.separator();
+
+            ui.horizontal(|ui| {
+                if drag_percentage(
+                    ui,
+                    "FC movement speed",
+                    &mut self.freecam_movement_speed,
+                    true,
+                )
+                .changed()
+                    && let Err(e) = self.remote.as_ref().unwrap().post_event(
+                        InboundGameControlEvent::SetFreecamMovementSpeed {
+                            value: self.freecam_movement_speed,
+                        },
+                    )
+                {
+                    self.notify
+                        .error(format!("Could not change freecam movement speed: {e}"));
+                }
+
+                if drag_percentage(
+                    ui,
+                    "FC rotation speed",
+                    &mut self.freecam_rotation_speed,
+                    true,
+                )
+                .changed()
+                    && let Err(e) = self.remote.as_ref().unwrap().post_event(
+                        InboundGameControlEvent::SetFreecamRotationSpeed {
+                            value: self.freecam_rotation_speed,
+                        },
+                    )
+                {
+                    self.notify
+                        .error(format!("Could not change freecam rotation speed: {e}"));
                 }
             });
 
@@ -508,17 +562,17 @@ impl CameraControlApp {
                         .range(0..=59),
                 );
 
-                if ui.button("Set Game Time").clicked() {
-                    if let Err(e) = self.remote.as_ref().unwrap().post_event(
+                if ui.button("Set Game Time").clicked()
+                    && let Err(e) = self.remote.as_ref().unwrap().post_event(
                         InboundGameControlEvent::RequestTimeOfDay {
                             hours: self.request_hours,
                             minutes: self.request_minutes,
                             seconds: self.request_seconds,
                         },
-                    ) {
-                        self.notify
-                            .error(format!("Could not dispatch scrub event to game: {e}"));
-                    }
+                    )
+                {
+                    self.notify
+                        .error(format!("Could not dispatch scrub event to game: {e}"));
                 }
             });
 
@@ -566,37 +620,9 @@ impl CameraControlApp {
 
                     ui.horizontal(|ui| {
                         ui.label("Rotation:");
-
-                        ui.add_enabled_ui(false, |ui| {
-                            changed |= ui
-                                .add(
-                                    DragValue::new(&mut kf.orientation.0)
-                                        .speed(0.1)
-                                        .prefix("x: "),
-                                )
-                                .changed();
-                            changed |= ui
-                                .add(
-                                    DragValue::new(&mut kf.orientation.1)
-                                        .speed(0.1)
-                                        .prefix("y: "),
-                                )
-                                .changed();
-                            changed |= ui
-                                .add(
-                                    DragValue::new(&mut kf.orientation.2)
-                                        .speed(0.1)
-                                        .prefix("z: "),
-                                )
-                                .changed();
-                            changed |= ui
-                                .add(
-                                    DragValue::new(&mut kf.orientation.3)
-                                        .speed(0.1)
-                                        .prefix("w: "),
-                                )
-                                .changed();
-                        });
+                        changed |= drag_pitch(ui, "pitch", &mut kf.orientation.0).changed();
+                        changed |= drag_angle_signed(ui, "yaw", &mut kf.orientation.1).changed();
+                        changed |= drag_angle_signed(ui, "roll", &mut kf.orientation.2).changed();
                     });
 
                     ui.horizontal(|ui| {
@@ -633,7 +659,7 @@ impl CameraControlApp {
                         map_id: -1,
                         time,
                         position: Vec3::new(0.0, 0.0, 0.0),
-                        orientation: Quat(0.0, 0.0, 0.0, 1.0),
+                        orientation: Orientation::default(),
                         fov: 0.89,
                         tension: 0.5,
                     };
@@ -773,25 +799,23 @@ impl CameraControlApp {
             );
 
             // Handle scrubbing motions
-            if timeline_response.clicked() || timeline_response.dragged() {
-                if let Some(pointer_pos) = ui.input(|i| i.pointer.hover_pos()) {
-                    let relative_x = pointer_pos.x - timeline_rect.left();
-                    let new_time =
-                        (relative_x / pixels_per_second).clamp(0.0, self.timeline_duration);
-                    self.playback_time = new_time;
-                    self.last_update = Some(std::time::Instant::now());
+            if (timeline_response.clicked() || timeline_response.dragged())
+                && let Some(pointer_pos) = ui.input(|i| i.pointer.hover_pos())
+            {
+                let relative_x = pointer_pos.x - timeline_rect.left();
+                let new_time = (relative_x / pixels_per_second).clamp(0.0, self.timeline_duration);
+                self.playback_time = new_time;
+                self.last_update = Some(std::time::Instant::now());
 
-                    if self.playback_mode_active {
-                        if let Err(e) = self
-                            .remote
-                            .as_ref()
-                            .unwrap()
-                            .post_event(InboundGameControlEvent::Scrub { time: new_time })
-                        {
-                            self.notify
-                                .error(format!("Could not dispatch scrub event to game: {e}"));
-                        }
-                    }
+                if self.playback_mode_active
+                    && let Err(e) = self
+                        .remote
+                        .as_ref()
+                        .unwrap()
+                        .post_event(InboundGameControlEvent::Scrub { time: new_time })
+                {
+                    self.notify
+                        .error(format!("Could not dispatch scrub event to game: {e}"));
                 }
             }
 
@@ -818,18 +842,17 @@ impl CameraControlApp {
             }
         });
 
-        if changed {
-            if let Err(e) =
+        if changed
+            && let Err(e) =
                 self.remote
                     .as_ref()
                     .unwrap()
                     .post_event(InboundGameControlEvent::Keyframes {
                         keyframes: self.keyframes.clone(),
                     })
-            {
-                self.notify
-                    .error(format!("Could not send keyframes to game: {e}"));
-            }
+        {
+            self.notify
+                .error(format!("Could not send keyframes to game: {e}"));
         }
     }
 
@@ -883,7 +906,7 @@ impl CameraControlApp {
             map_id: -1,
             time,
             position: Vec3::new(0.0, 0.0, 0.0),
-            orientation: Quat(0.0, 0.0, 0.0, 1.0),
+            orientation: Orientation::default(),
             fov: 0.89,
             tension: 0.5,
         };
@@ -940,7 +963,7 @@ impl CameraControlApp {
                 .as_ref()
                 .unwrap()
                 .post_event(InboundGameControlEvent::SetCharacterNoDead {
-                    value: self.character_no_dead
+                    value: self.character_no_dead,
                 })
         {
             self.notify.error(format!("Could not enable no dead: {e}"));
@@ -955,7 +978,7 @@ impl CameraControlApp {
                 .as_ref()
                 .unwrap()
                 .post_event(InboundGameControlEvent::SetCharacterNoMove {
-                    value: self.character_no_move
+                    value: self.character_no_move,
                 })
         {
             self.notify.error(format!("Could not enable no move: {e}"));
@@ -965,12 +988,15 @@ impl CameraControlApp {
     fn toggle_fov_override(&mut self) {
         self.override_fov = !self.override_fov;
 
-        if let Err(e) = self.remote.as_ref().unwrap().post_event(
-            InboundGameControlEvent::GlobalFov {
-                fov: self.global_fov,
-                enabled: self.override_fov,
-            },
-        ) {
+        if let Err(e) =
+            self.remote
+                .as_ref()
+                .unwrap()
+                .post_event(InboundGameControlEvent::GlobalFov {
+                    fov: self.global_fov,
+                    enabled: self.override_fov,
+                })
+        {
             self.notify
                 .error(format!("Could not change global FOV: {e}"));
         }
@@ -979,12 +1005,15 @@ impl CameraControlApp {
     fn set_fov(&mut self, fov: &f32) {
         self.global_fov = (*fov).clamp(2.0f32.to_radians(), 360.0f32.to_radians());
 
-        if let Err(e) = self.remote.as_ref().unwrap().post_event(
-            InboundGameControlEvent::GlobalFov {
-                fov: self.global_fov,
-                enabled: self.override_fov,
-            },
-        ) {
+        if let Err(e) =
+            self.remote
+                .as_ref()
+                .unwrap()
+                .post_event(InboundGameControlEvent::GlobalFov {
+                    fov: self.global_fov,
+                    enabled: self.override_fov,
+                })
+        {
             self.notify
                 .error(format!("Could not change global FOV: {e}"));
         }
@@ -1005,6 +1034,39 @@ impl CameraControlApp {
                 .error(format!("Could not change game speed: {e}"));
         }
     }
+
+    fn toggle_debug_pause(&mut self) {
+        self.debug_pause = !self.debug_pause;
+
+        if let Err(e) =
+            self.remote
+                .as_ref()
+                .unwrap()
+                .post_event(InboundGameControlEvent::SetDebugPause {
+                    enabled: self.debug_pause,
+                })
+        {
+            self.notify
+                .error(format!("Could not toggle debug pause: {e}"));
+        }
+    }
+
+    fn toggle_freecam(&mut self) {
+        self.freecam_enabled = !self.freecam_enabled;
+
+        if let Err(e) =
+            self.remote
+                .as_ref()
+                .unwrap()
+                .post_event(InboundGameControlEvent::SetFreecamEnabled {
+                    enabled: self.freecam_enabled,
+                })
+        {
+            self.notify
+                .error(format!("Could not toggle freecam: {e}"));
+        }
+    }
+
 }
 
 pub enum KeybindRequest {
@@ -1044,6 +1106,8 @@ fn keybind_controls(ui: &mut egui::Ui, i: usize, bind: &mut Keybind) -> Option<K
                     KeybindAction::AdjustFov(_) => "Adjust Fov",
                     KeybindAction::SetGameSpeed(_) => "Set game speed",
                     KeybindAction::AdjustGamespeed(_) => "Adjust game speed",
+                    KeybindAction::ToggleDebugPause => "Toggle debug pause",
+                    KeybindAction::ToggleFreecam => "Toggle freecam",
                 })
                 .show_ui(ui, |ui| {
                     ui.selectable_value(
@@ -1062,13 +1126,51 @@ fn keybind_controls(ui: &mut egui::Ui, i: usize, bind: &mut Keybind) -> Option<K
                         "Create Keyframe",
                     );
                     ui.selectable_value(&mut bind.action, KeybindAction::ToggleHUD, "Toggle HUD");
-                    ui.selectable_value(&mut bind.action, KeybindAction::ToggleCharacterNoDead, "Toggle character no dead");
-                    ui.selectable_value(&mut bind.action, KeybindAction::ToggleCharacterNoMove, "Toggle character no move");
-                    ui.selectable_value(&mut bind.action, KeybindAction::ToggleFovOverride, "Toggle fov override");
-                    ui.selectable_value(&mut bind.action, KeybindAction::SetFov(48.0f32.to_radians()), "Set fov");
-                    ui.selectable_value(&mut bind.action, KeybindAction::AdjustFov(2.0f32.to_radians()), "Adjust fov");
-                    ui.selectable_value(&mut bind.action, KeybindAction::SetGameSpeed(1.0), "Set game speed");
-                    ui.selectable_value(&mut bind.action, KeybindAction::AdjustGamespeed(0.1), "Adjust game speed");
+                    ui.selectable_value(
+                        &mut bind.action,
+                        KeybindAction::ToggleCharacterNoDead,
+                        "Toggle character no dead",
+                    );
+                    ui.selectable_value(
+                        &mut bind.action,
+                        KeybindAction::ToggleCharacterNoMove,
+                        "Toggle character no move",
+                    );
+                    ui.selectable_value(
+                        &mut bind.action,
+                        KeybindAction::ToggleFovOverride,
+                        "Toggle fov override",
+                    );
+                    ui.selectable_value(
+                        &mut bind.action,
+                        KeybindAction::SetFov(48.0f32.to_radians()),
+                        "Set fov",
+                    );
+                    ui.selectable_value(
+                        &mut bind.action,
+                        KeybindAction::AdjustFov(2.0f32.to_radians()),
+                        "Adjust fov",
+                    );
+                    ui.selectable_value(
+                        &mut bind.action,
+                        KeybindAction::SetGameSpeed(1.0),
+                        "Set game speed",
+                    );
+                    ui.selectable_value(
+                        &mut bind.action,
+                        KeybindAction::AdjustGamespeed(0.1),
+                        "Adjust game speed",
+                    );
+                    ui.selectable_value(
+                        &mut bind.action,
+                        KeybindAction::ToggleDebugPause,
+                        "Toggle debug pause",
+                    );
+                    ui.selectable_value(
+                        &mut bind.action,
+                        KeybindAction::ToggleFreecam,
+                        "Toggle freecam",
+                    );
                 });
 
             match &mut bind.action {
@@ -1090,14 +1192,14 @@ fn keybind_controls(ui: &mut egui::Ui, i: usize, bind: &mut Keybind) -> Option<K
                 KeybindAction::AdjustGamespeed(multiplier) => {
                     drag_percentage_delta(ui, "Game speed adjustment ", multiplier, false);
                 }
+                KeybindAction::ToggleDebugPause => {}
+                KeybindAction::ToggleFreecam => {}
             }
         });
     });
 
     result
 }
-               
-
 
 fn format_input(input: &KeybindInput) -> &str {
     match input {

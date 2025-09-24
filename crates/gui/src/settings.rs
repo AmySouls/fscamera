@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
 use directories::ProjectDirs;
 use protocol::SettingsData;
@@ -26,11 +26,11 @@ pub(crate) fn get_settings() -> Result<SettingsData, SettingsError> {
     };
 
     // No saved data yet results in default being loaded
-    if !std::fs::exists(&path)? {
+    if !fs::exists(&path)? {
         return Ok(SettingsData::default());
     }
 
-    let data = std::fs::read_to_string(path)?;
+    let data = fs::read_to_string(path)?;
     let Ok(deserialized) = serde_json::from_str::<SettingsFormat>(&data) else {
         return Err(SettingsError::Json);
     };
@@ -45,7 +45,7 @@ pub(crate) fn save_settings(data: &SettingsData) -> Result<(), SettingsError> {
     };
 
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent)?;
     }
 
     let wrapped = SettingsFormat::V1(data.clone());
@@ -54,7 +54,7 @@ pub(crate) fn save_settings(data: &SettingsData) -> Result<(), SettingsError> {
         return Err(SettingsError::Json);
     };
 
-    std::fs::write(path, data)?;
+    fs::write(path, data)?;
 
     Ok(())
 }

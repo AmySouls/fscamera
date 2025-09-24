@@ -8,12 +8,12 @@ use camera::CameraManager;
 use crossbeam::queue::SegQueue;
 use eldenring::cs::CSTaskGroupIndex;
 use eldenring::cs::CSTaskImp;
+use eldenring::cs::CSWindowImp;
 use eldenring::fd4::FD4TaskData;
-use eldenring_util::arxan;
-use eldenring_util::program::Program;
+use eldenring::position::PositionDelta;
+use eldenring_util::singleton::get_instance;
 use eldenring_util::task::CSTaskImpExt;
-use eldenring_util::{camera::CSCamExt, singleton::get_instance};
-use fromsoft_shared::OwnedPtr;
+use fromsoft_shared::{arxan, OwnedPtr, Program};
 use game::get_offsets;
 use game::CSCamera;
 use game::CSFlipperImp;
@@ -27,8 +27,14 @@ use log4rs::{
     encode::pattern::PatternEncoder,
     Config,
 };
+use nalgebra::RowVector3;
+use nalgebra::RowVector4;
+use nalgebra_glm::Mat3;
+use nalgebra_glm::Mat4;
 use nalgebra_glm::TMat4;
+use nalgebra_glm::Vec4;
 use pelite::pe64::Pe;
+use protocol::keyframe::Orientation;
 use protocol::keyframe::Quat;
 use protocol::InboundGameControlEvent;
 use protocol::OutboundGameControlEvent;
@@ -37,20 +43,24 @@ use protocol::{keyframe::Vec3, CameraState, RemoteError};
 
 use nalgebra_glm as glm;
 use retour::static_detour;
+use windows::Win32::Foundation::HWND;
 
 mod camera;
+mod freecam;
 mod game;
+mod input;
+mod keyframe;
 
 dll_syringe::payload_procedure! {
     fn snapshot_camera_state() -> Result<CameraState, RemoteError> {
         let program = Program::current();
-        let offsets = get_offsets(&program)?;
+        let offsets = get_offsets(&program).map_err(|e| e.clone())?;
 
         let Some(cs_camera) = unsafe { get_instance::<game::CSCamera>() }.unwrap() else {
             return Err(RemoteError::AcquireCSCamera);
         };
 
-        let field_area = unsafe { std::mem::transmute::<u64, OwnedPtr<Option<OwnedPtr<FieldArea>>>>(program.rva_to_va(offsets.field_area).unwrap()) };
+        let field_area = unsafe { transmute::<u64, OwnedPtr<Option<OwnedPtr<FieldArea>>>>(program.rva_to_va(offsets.field_area).unwrap()) };
         let Some(field_area) = field_area.as_ref() else {
             return Err(RemoteError::AcquireFieldArea)
         };
@@ -69,20 +79,27 @@ dll_syringe::payload_procedure! {
         );
 
         let orientation = {
-            let matrix: TMat4<f32> = cs_camera.pers_cam_1.matrix.clone().into();
-            let rotation = matrix.fixed_view::<3, 3>(0, 0).into_owned();
+            let PositionDelta(rx, ry, rz) = cs_camera.pers_cam_1.right();
+            let PositionDelta(ux, uy, uz) = cs_camera.pers_cam_1.up();
+            let PositionDelta(fx, fy, fz) = cs_camera.pers_cam_1.forward();
+
+            let rotation = Mat3::from_rows(&[
+                RowVector3::new(rx, ry, rz),
+                RowVector3::new(ux, uy, uz),
+                RowVector3::new(fx, fy, fz),
+            ]);
+
             glm::mat3_to_quat(&rotation)
         };
 
-        let orientation_vec = orientation.as_vector();
+        let euler = glm::quat_euler_angles(&orientation);
         Ok(CameraState {
             map_id: world_block_info.map_id.into(),
             position,
-            orientation: Quat(
-                orientation_vec.x,
-                orientation_vec.y,
-                orientation_vec.z,
-                orientation_vec.w,
+            orientation: Orientation(
+                euler.x,
+                euler.y,
+                euler.z,
             ),
             fov: cs_camera.pers_cam_1.fov,
         })
@@ -112,10 +129,9 @@ dll_syringe::payload_procedure! {
     // TODO: clean me up please
     fn initialize(settings: SettingsData) -> Result<(), RemoteError> {
         let program = Program::current();
-        let offsets = get_offsets(&program)?;
+        let offsets = get_offsets(&program).map_err(|e| e.clone())?;
 
         if INITIALIZED.compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed).is_err() {
-            log::info!("Already initialized camera agent");
             INBOUND_EVENT_QUEUE.push(InboundGameControlEvent::Initialize { settings });
             return Ok(())
         }
@@ -136,17 +152,17 @@ dll_syringe::payload_procedure! {
         LOG_HANDLE.set(log4rs::init_config(config).unwrap()).unwrap();
         log_panics::init();
 
-        log::info!("Initializing camera agent");
-
         let mut camera_manager = CameraManager::default();
+        let mut input = input::Input::default();
         let cs_task = unsafe { get_instance::<CSTaskImp>() }.unwrap().unwrap();
 
         // Keep track of delta time between task execution as we'll be messing with the one offered
         // by the game.
         let mut last_update = Instant::now();
 
+        unsafe { input::setup_hook() };
+
         {
-            let offsets = get_offsets(&program)?;
             // Hijack camera matrix by enqueueing a task to happen right before the draw happens.
             // It's very important that we do this before the draw and after the OG camera update.
             cs_task.run_recurring(move |_: &FD4TaskData| {
@@ -166,7 +182,8 @@ dll_syringe::payload_procedure! {
                     return;
                 };
 
-                camera_manager.update(&delta);
+                input.update();
+                camera_manager.update(&input, &delta);
 
                 // We need FieldArea to translate coordinates from havok space (where the cam lives) to
                 // block space as havok space shifts around a lot making it unusable for persisting
@@ -193,25 +210,22 @@ dll_syringe::payload_procedure! {
                 };
 
                 // Update the camera's matrix if necessary
-                camera_manager.apply(&offsets, cs_camera, field_area.as_ref(), cs_flipper, world_chr_man);
-
+                camera_manager.apply(
+                    &offsets,
+                    cs_camera,
+                    field_area.as_ref(),
+                    cs_flipper,
+                    world_chr_man,
+                );
             }, CSTaskGroupIndex::Draw_Pre);
         }
-
-        // Patch in freecam controls
-        let return_true: [u8; 3] = [0xB0, 0x01, 0xC3];
-        let enable_freecam_controls_va = program.rva_to_va(offsets.enable_freecam_controls).unwrap();
-        unsafe { std::ptr::copy_nonoverlapping(&return_true, enable_freecam_controls_va as _, 3); }
-
-        // Patch in L3+X enabling byte
-        let enable_freecam_toggle: *mut bool = program.rva_to_va(offsets.enable_freecam_toggle).unwrap() as _;
-        unsafe { *enable_freecam_toggle = true };
 
         // Fuck the code restoration routines as they remove MoveMapStep hooks
         unsafe { arxan::disable_code_restoration(&program) }.unwrap();
 
         // Hook the move map step so we can enable the debug frame-by-frame pause when users enter
-        // into the first freecam mode.
+        // into the first freecam mode. The reason for me putting this in a hook is because I can't
+        // find a straightforward way to locate an instance of MoveMapStep.
         let move_map_step_hook_va = program.rva_to_va(offsets.move_map_step).unwrap();
         unsafe {
             MOVE_MAP_STEP
@@ -228,8 +242,8 @@ dll_syringe::payload_procedure! {
                 .enable().unwrap();
         }
 
-        // Hook the move map step so we can enable the debug frame-by-frame pause when users enter
-        // into the first freecam mode.
+        // Hook the Scaleform update so we can conditionally skip calling it, causing the rendered
+        // scaleform output to never get copied into the final render.
         let scaleform_update_b_va = program.rva_to_va(offsets.scaleform_update_b).unwrap();
         unsafe {
             SCALEFORM_UPDATE_B
@@ -254,7 +268,8 @@ static_detour! {
     static SCALEFORM_UPDATE_B: unsafe extern "C" fn(usize, usize);
 }
 
-static DISABLE_HUD: AtomicBool= AtomicBool::new(false);
+static DISABLE_HUD: AtomicBool = AtomicBool::new(false);
+static DEBUG_PAUSE_ENABLED: AtomicBool = AtomicBool::new(false);
 static LOG_HANDLE: OnceLock<log4rs::Handle> = OnceLock::new();
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 static INBOUND_EVENT_QUEUE: SegQueue<InboundGameControlEvent> = SegQueue::new();

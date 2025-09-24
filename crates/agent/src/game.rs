@@ -1,8 +1,7 @@
-use std::{fmt::Display, ptr::NonNull};
+use std::{fmt::Display, ptr::NonNull, sync::LazyLock};
 
 use eldenring::{cs::CSPersCam, position::HavokPosition, Tree};
-use fromsoft_shared::OwnedPtr;
-use eldenring_util::program::Program;
+use fromsoft_shared::{OwnedPtr, Program};
 use pelite::pe::Pe;
 use protocol::RemoteError;
 
@@ -15,7 +14,8 @@ pub(crate) struct GameOffsets {
     pub no_dead_flag: u32,
 }
 
-pub(crate) fn get_offsets(program: &Program) -> Result<GameOffsets, RemoteError> {
+static GAME_OFFSETS: LazyLock<Result<GameOffsets, RemoteError>> = LazyLock::new(|| {
+    let program = Program::current();
     // Detect running game using PE header
     let resources = program.resources().map_err(|_| RemoteError::UnknownGame)?;
 
@@ -48,8 +48,6 @@ pub(crate) fn get_offsets(program: &Program) -> Result<GameOffsets, RemoteError>
         (product.ok_or(RemoteError::UnknownGame)?, version)
     };
 
-    log::info!("Discovered game \"{product}\" ver {version}");
-
     Ok(match (product.as_str(), version.as_str()) {
         ("ELDEN RING NIGHTREIGN", "1.1.4.0") => GameOffsets {
             enable_freecam_controls: 0xeee8a0,
@@ -67,8 +65,37 @@ pub(crate) fn get_offsets(program: &Program) -> Result<GameOffsets, RemoteError>
             scaleform_update_b: 0xe26460,
             no_dead_flag: 0x3b045c4,
         },
+        ("ELDEN RING NIGHTREIGN", "1.2.0.0") => GameOffsets {
+            enable_freecam_controls: 0x124e15,
+            enable_freecam_toggle: 0x439ae7d,
+            move_map_step: 0xbe9ff0,
+            field_area: 0x3b7e6f8,
+            scaleform_update_b: 0xe6b8c0,
+            no_dead_flag: 0x3b7b604,
+        },
+        ("ELDEN RING NIGHTREIGN", "1.2.1.0") => GameOffsets {
+            enable_freecam_controls: 0xf342b0,
+            enable_freecam_toggle: 0x439ae7d,
+            move_map_step: 0xbea7e0,
+            field_area: 0x3b7e6f8,
+            scaleform_update_b: 0xe6c0b0,
+            no_dead_flag: 0x3b7b604,
+        },
+        ("ELDEN RING NIGHTREIGN", "1.2.2.0") => GameOffsets {
+            enable_freecam_controls: 0xf383e0,
+            enable_freecam_toggle: 0x43ade9d,
+            move_map_step: 0xbee8c0,
+            field_area: 0x3b91710,
+            scaleform_update_b: 0xe701e0,
+            no_dead_flag: 0x3b8e624,
+        },
+
         _ => return Err(RemoteError::UnknownGame),
     })
+});
+
+pub(crate) fn get_offsets(program: &Program) -> Result<&'static GameOffsets, &'static RemoteError> {
+    (*GAME_OFFSETS).as_ref()
 }
 
 #[repr(C)]
@@ -197,7 +224,6 @@ impl WorldInfoOwner {
                 .world_grid_area_info()
                 .iter()
                 .find(|w| w.base.hosts_small_bases)?;
-            log::info!("Found small base world are info {:x?}", world_area_info as *const WorldGridAreaInfo);
 
             for small_base in world_area_info.small_bases.iter() {
                 if small_base.block.small_base_block_id == block_id {
@@ -396,5 +422,5 @@ pub struct ChrModules {
 #[repr(C)]
 pub struct ChrDataModule {
     unk0: [u8; 0x189],
-    pub no_dead: bool, 
+    pub no_dead: bool,
 }
