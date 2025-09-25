@@ -1,8 +1,7 @@
 use std::{fmt::Display, ptr::NonNull};
 
 use eldenring::{cs::CSPersCam, position::HavokPosition, Tree};
-use fromsoft_shared::OwnedPtr;
-use eldenring_util::program::Program;
+use fromsoft_shared::{OwnedPtr, Program};
 use pelite::pe::Pe;
 use protocol::RemoteError;
 
@@ -67,13 +66,45 @@ pub(crate) fn get_offsets(program: &Program) -> Result<GameOffsets, RemoteError>
             scaleform_update_b: 0xe26460,
             no_dead_flag: 0x3b045c4,
         },
+        ("ELDEN RING NIGHTREIGN", "1.2.0.0") => GameOffsets {
+            enable_freecam_controls: 0x124e15,
+            enable_freecam_toggle: 0x439ae7d,
+            move_map_step: 0xbe9ff0,
+            field_area: 0x3b7e6f8,
+            scaleform_update_b: 0xe6b8c0,
+            no_dead_flag: 0x3b7b604,
+        },
+        ("ELDEN RING NIGHTREIGN", "1.2.1.0") => GameOffsets {
+            enable_freecam_controls: 0xf342b0,
+            enable_freecam_toggle: 0x439ae7d,
+            move_map_step: 0xbea7e0,
+            field_area: 0x3b7e6f8,
+            scaleform_update_b: 0xe6c0b0,
+            no_dead_flag: 0x3b7b604,
+        },
+        ("ELDEN RING NIGHTREIGN", "1.2.2.0") => GameOffsets {
+            enable_freecam_controls: 0xf383e0,
+            enable_freecam_toggle: 0x43ade9d,
+            move_map_step: 0xbee8c0,
+            field_area: 0x3b91710,
+            scaleform_update_b: 0xe701e0,
+            no_dead_flag: 0x3b8e624,
+        },
+        ("ELDEN RING NIGHTREIGN", "1.2.3.0") => GameOffsets {
+            enable_freecam_controls: 0xf3a100,
+            enable_freecam_toggle: 0x43ba39d,
+            move_map_step: 0xbf0270,
+            field_area: 0x3b9dc10,
+            scaleform_update_b: 0xe71e50,
+            no_dead_flag: 0x3b9ab24,
+        },
         _ => return Err(RemoteError::UnknownGame),
     })
 }
 
 #[repr(C)]
 /// Source of name: RTTI
-#[dlrf::singleton("CSCamera")]
+#[fromsoft_shared::singleton("CSCamera")]
 pub struct CSCamera {
     pub pers_cam_1: OwnedPtr<CSPersCam>,
     pub pers_cam_2: OwnedPtr<CSPersCam>,
@@ -93,14 +124,14 @@ pub struct CSCamera {
 }
 
 #[repr(C)]
-#[dlrf::singleton("CSFlipper")]
+#[fromsoft_shared::singleton("CSFlipper")]
 pub struct CSFlipperImp {
     unk0: [u8; 0x2D4],
     pub time_multiplier: f32,
 }
 
 #[repr(C)]
-#[dlrf::singleton("WorldAreaTime")]
+#[fromsoft_shared::singleton("WorldAreaTime")]
 pub struct WorldAreaTime {
     unk0: [u8; 0x28],
     pub request_hour: u32,
@@ -364,7 +395,7 @@ impl Display for MapId {
 }
 
 #[repr(C)]
-#[dlrf::singleton("WorldChrMan")]
+#[fromsoft_shared::singleton("WorldChrMan")]
 pub struct WorldChrMan {
     unk0: [u8; 0x174e8],
     pub main_player: Option<OwnedPtr<ChrIns>>,

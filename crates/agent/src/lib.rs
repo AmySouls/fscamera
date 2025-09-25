@@ -9,11 +9,8 @@ use crossbeam::queue::SegQueue;
 use eldenring::cs::CSTaskGroupIndex;
 use eldenring::cs::CSTaskImp;
 use eldenring::fd4::FD4TaskData;
-use eldenring_util::arxan;
-use eldenring_util::program::Program;
 use eldenring_util::task::CSTaskImpExt;
-use eldenring_util::{camera::CSCamExt, singleton::get_instance};
-use fromsoft_shared::OwnedPtr;
+use fromsoft_shared::{arxan, OwnedPtr, Program, get_instance};
 use game::get_offsets;
 use game::CSCamera;
 use game::CSFlipperImp;
@@ -27,6 +24,8 @@ use log4rs::{
     encode::pattern::PatternEncoder,
     Config,
 };
+use nalgebra::RowVector4;
+use nalgebra_glm::Mat4;
 use nalgebra_glm::TMat4;
 use pelite::pe64::Pe;
 use protocol::keyframe::Quat;
@@ -46,7 +45,7 @@ dll_syringe::payload_procedure! {
         let program = Program::current();
         let offsets = get_offsets(&program)?;
 
-        let Some(cs_camera) = unsafe { get_instance::<game::CSCamera>() }.unwrap() else {
+        let Some(cs_camera) = (unsafe { get_instance::<game::CSCamera>() }) else {
             return Err(RemoteError::AcquireCSCamera);
         };
 
@@ -69,7 +68,15 @@ dll_syringe::payload_procedure! {
         );
 
         let orientation = {
-            let matrix: TMat4<f32> = cs_camera.pers_cam_1.matrix.clone().into();
+            // let matrix: TMat4<f32> = cs_camera.pers_cam_1.matrix.clone().into();
+            let mtx = &cs_camera.pers_cam_1.matrix;
+            let matrix = Mat4::from_rows(&[
+                RowVector4::new(mtx.0 .0, mtx.0 .1, mtx.0 .2, mtx.0 .3),
+                RowVector4::new(mtx.1 .0, mtx.1 .1, mtx.1 .2, mtx.1 .3),
+                RowVector4::new(mtx.2 .0, mtx.2 .1, mtx.2 .2, mtx.2 .3),
+                RowVector4::new(mtx.3 .0, mtx.3 .1, mtx.3 .2, mtx.3 .3),
+            ]);
+
             let rotation = matrix.fixed_view::<3, 3>(0, 0).into_owned();
             glm::mat3_to_quat(&rotation)
         };
@@ -139,7 +146,7 @@ dll_syringe::payload_procedure! {
         log::info!("Initializing camera agent");
 
         let mut camera_manager = CameraManager::default();
-        let cs_task = unsafe { get_instance::<CSTaskImp>() }.unwrap().unwrap();
+        let cs_task = (unsafe { get_instance::<CSTaskImp>() }).unwrap();
 
         // Keep track of delta time between task execution as we'll be messing with the one offered
         // by the game.
@@ -162,7 +169,7 @@ dll_syringe::payload_procedure! {
                 }
 
                 // Camera's isn't necessarily there and we've got nothing to do in such a situation.
-                let Some(cs_camera) = unsafe { get_instance::<CSCamera>() }.unwrap() else {
+                let Some(cs_camera) = (unsafe { get_instance::<CSCamera>() }) else {
                     return;
                 };
 
@@ -177,12 +184,12 @@ dll_syringe::payload_procedure! {
 
                 // CSFlipper is responsible for flipping the framebuffer so it should be available if
                 // we're rendering stuff...
-                let Some(cs_flipper) = unsafe { get_instance::<CSFlipperImp>() }.unwrap() else {
+                let Some(cs_flipper) = (unsafe { get_instance::<CSFlipperImp>() }) else {
                     return;
                 };
 
                 // WorldChrMan is responsible for managing characters including our main player
-                let Some(world_chr_man) = unsafe { get_instance::<game::WorldChrMan>() }.unwrap() else {
+                let Some(world_chr_man) = (unsafe { get_instance::<game::WorldChrMan>() }) else {
                     return;
                 };
 

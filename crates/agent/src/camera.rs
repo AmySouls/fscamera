@@ -1,7 +1,7 @@
 use std::{sync::atomic::Ordering, time::Duration};
 
-use eldenring_util::{input, program::Program, singleton::get_instance};
-use fromsoft_shared::{FSVector4, OwnedPtr};
+use eldenring_util::{input};
+use fromsoft_shared::{F32Vector4, OwnedPtr, Program, get_instance};
 use nalgebra_glm as glm;
 use pelite::pe::Pe;
 use protocol::{
@@ -84,7 +84,7 @@ impl CameraManager {
                 minutes,
                 seconds,
             } => {
-                let Some(world_area_time) = unsafe { get_instance::<WorldAreaTime>() }.unwrap()
+                let Some(world_area_time) = (unsafe { get_instance::<WorldAreaTime>() })
                 else {
                     return;
                 };
@@ -208,12 +208,12 @@ impl CameraManager {
 
                 // Build up new matrix
                 camera.pers_cam_1.matrix.0 =
-                    FSVector4(rotation.m11, rotation.m12, rotation.m13, rotation.m14);
+                    F32Vector4(rotation.m11, rotation.m12, rotation.m13, rotation.m14);
                 camera.pers_cam_1.matrix.1 =
-                    FSVector4(rotation.m21, rotation.m22, rotation.m23, rotation.m24);
+                    F32Vector4(rotation.m21, rotation.m22, rotation.m23, rotation.m24);
                 camera.pers_cam_1.matrix.2 =
-                    FSVector4(rotation.m31, rotation.m32, rotation.m33, rotation.m34);
-                camera.pers_cam_1.matrix.3 = FSVector4(position.x, position.y, position.z, 1.0);
+                    F32Vector4(rotation.m31, rotation.m32, rotation.m33, rotation.m34);
+                camera.pers_cam_1.matrix.3 = F32Vector4(position.x, position.y, position.z, 1.0);
                 camera.pers_cam_1.fov = fov;
             }
         }

@@ -11,8 +11,8 @@ dll-syringe.workspace = true
 protocol.workspace = true
 eldenring = { path = "../../../chains-bindings/crates/eldenring" }
 eldenring-util = { path = "../../../chains-bindings/crates/eldenring-util" }
-dlrf = { package = "fromsoftware-dlrf", path = "../../../chains-bindings/crates/dlrf" }
 fromsoft-shared = { package = "fromsoftware-shared", path = "../../../chains-bindings/crates/shared" }
+from-singleton = { version = "2" }
 log = "0.4"
 log4rs = "1.3.0"
 log-panics = { version = "2", features = ["with-backtrace"]}
