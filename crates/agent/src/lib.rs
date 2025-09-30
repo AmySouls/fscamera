@@ -2,8 +2,11 @@ use std::mem::transmute;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::OnceLock;
+use std::time::Duration;
 use std::time::Instant;
 
+use ::camera::FreeCam;
+use ::camera::FreeCamInput;
 use camera::CameraManager;
 use crossbeam::queue::SegQueue;
 use eldenring::cs::CSTaskGroupIndex;
@@ -12,14 +15,19 @@ use eldenring::cs::CSWindowImp;
 use eldenring::fd4::FD4TaskData;
 use eldenring::position::PositionDelta;
 use eldenring_util::task::CSTaskImpExt;
-use fromsoft_shared::{arxan, OwnedPtr, Program, get_instance};
+use fromsoft_shared::F32Vector4;
+use fromsoft_shared::{arxan, get_instance, OwnedPtr, Program};
 use game::get_offsets;
 use game::CSCamera;
 use game::CSFlipperImp;
-use game::WorldChrMan;
 use game::FieldArea;
 use game::FreecamMode;
 use game::MoveMapStep;
+use game::WorldChrMan;
+use glam::Mat3;
+use glam::Quat;
+use glam::Vec2;
+use glam::Vec3;
 use log::LevelFilter;
 use log4rs::{
     append::file::FileAppender,
@@ -27,19 +35,19 @@ use log4rs::{
     encode::pattern::PatternEncoder,
     Config,
 };
+use nalgebra::Quaternion;
 use nalgebra::RowVector3;
 use nalgebra::RowVector4;
-use nalgebra_glm::Mat3;
 use nalgebra_glm::Mat4;
 use nalgebra_glm::TMat4;
 use nalgebra_glm::Vec4;
 use pelite::pe64::Pe;
 use protocol::keyframe::Orientation;
-use protocol::keyframe::Quat;
+use protocol::CameraMode;
 use protocol::InboundGameControlEvent;
 use protocol::OutboundGameControlEvent;
 use protocol::SettingsData;
-use protocol::{keyframe::Vec3, CameraState, RemoteError};
+use protocol::{CameraState, RemoteError};
 
 use nalgebra_glm as glm;
 use retour::static_detour;
@@ -74,25 +82,26 @@ dll_syringe::payload_procedure! {
             };
 
             let block_pos = cs_camera.pers_cam_1.position() - world_block_info.physics_center;
-            let position = Vec3::new(
+            let position = protocol::keyframe::Vec3::new(
                 block_pos.0,
                 block_pos.1,
                 block_pos.2,
             );
 
-            let orientation = {
-                let PositionDelta(rx, ry, rz) = cs_camera.pers_cam_1.right();
-                let PositionDelta(ux, uy, uz) = cs_camera.pers_cam_1.up();
-                let PositionDelta(fx, fy, fz) = cs_camera.pers_cam_1.forward();
-
-                let rotation = Mat3::from_rows(&[
-                    RowVector3::new(rx, ry, rz),
-                    RowVector3::new(ux, uy, uz),
-                    RowVector3::new(fx, fy, fz),
-                ]);
-
-                glm::mat3_to_quat(&rotation)
-            };
+            // let orientation = {
+            //     let PositionDelta(rx, ry, rz) = cs_camera.pers_cam_1.right();
+            //     let PositionDelta(ux, uy, uz) = cs_camera.pers_cam_1.up();
+            //     let PositionDelta(fx, fy, fz) = cs_camera.pers_cam_1.forward();
+            //
+            //     let rotation = Mat3::from_rows(&[
+            //         RowVector3::new(rx, ry, rz),
+            //         RowVector3::new(ux, uy, uz),
+            //         RowVector3::new(fx, fy, fz),
+            //     ]);
+            //
+            //     glm::mat3_to_quat(&rotation)
+            // };
+            let orientation = Quaternion::identity();
 
             let euler = glm::quat_euler_angles(&orientation);
             Ok(CameraState {
@@ -156,13 +165,16 @@ dll_syringe::payload_procedure! {
         LOG_HANDLE.set(log4rs::init_config(config).unwrap()).unwrap();
         log_panics::init();
 
-        let mut camera_manager = CameraManager::default();
+        // let mut camera_manager = CameraManager::default();
         let mut input = input::Input::default();
         let cs_task = unsafe { get_instance::<CSTaskImp>() }.unwrap();
 
         // Keep track of delta time between task execution as we'll be messing with the one offered
         // by the game.
         let mut last_update = Instant::now();
+
+        let mut camera_mode = CameraMode::Game;
+        let mut freecam = FreeCam::default();
 
         unsafe { input::setup_hook() };
 
@@ -178,23 +190,25 @@ dll_syringe::payload_procedure! {
 
                 // Handle incoming events from the GUI
                 while let Some(event) = INBOUND_EVENT_QUEUE.pop() {
-                    camera_manager.handle_event(&event);
+                    handle_inbound_event(
+                        &event,
+                        &mut camera_mode,
+                    );
                 }
 
-                // Camera's isn't necessarily there and we've got nothing to do in such a situation.
-                let cs_camera = unsafe { get_instance::<CSCamera>() };
-                let Some(cs_camera) = cs_camera else {
-                    return;
-                };
-
-                input.update();
-                camera_manager.update(&input, &delta);
+                // Acquire a pile of shit from the game we can't really live without.
 
                 // We need FieldArea to translate coordinates from havok space (where the cam lives) to
                 // block space as havok space shifts around a lot making it unusable for persisting
                 // coordinates with.
                 let field_area = unsafe {
                     transmute::<u64, OwnedPtr<Option<OwnedPtr<FieldArea>>>>(program.rva_to_va(offsets.field_area).unwrap())
+                };
+
+                // Camera's isn't necessarily there and we've got nothing to do in such a situation.
+                let cs_camera = unsafe { get_instance::<CSCamera>() };
+                let Some(cs_camera) = cs_camera else {
+                    return;
                 };
 
                 // CSFlipper is responsible for flipping the framebuffer so it should be available if
@@ -204,26 +218,94 @@ dll_syringe::payload_procedure! {
                     return;
                 };
 
-                // WorldChrMan is responsible for managing characters including our main player
+                // WorldChrMan is responsible for managing characters including our main player.
+                // Our main player is required for a few of the other patches as well as figuring
+                // out what map to use as a base for our coordinate conversions.
                 let world_chr_man = unsafe { get_instance::<WorldChrMan>() };
                 let Some(world_chr_man) = world_chr_man else {
                     return;
                 };
 
-                // Field area is responsible for translating havok AABB coords to block coords, we
-                // can't displace the camera sensibly without it.
-                let Some(field_area) = field_area.as_ref() else {
-                    return;
-                };
+                input.update();
 
-                // Update the camera's matrix if necessary
-                camera_manager.apply(
-                    &offsets,
-                    cs_camera,
-                    field_area.as_ref(),
-                    cs_flipper,
-                    world_chr_man,
-                );
+                // Test code to switch camera modes
+                if input.key_pressed_debounced(0x78, Duration::from_secs(500)) {
+                    camera_mode = match camera_mode {
+                        CameraMode::Game => CameraMode::Freecam,
+                        CameraMode::Freecam => CameraMode::Game,
+                    };
+
+                    // Initialize freecam with current position and rotation.
+                    if camera_mode == CameraMode::Freecam {
+                        // Sample position of camera
+                        let F32Vector4(tx, ty, tz, _) = cs_camera.pers_cam_1.matrix.3;
+
+                        freecam = FreeCam::from(
+                            Vec3::new(tx, ty, tz),
+                            Quat::IDENTITY,
+                        );
+                    }
+                }
+
+                match camera_mode {
+                    CameraMode::Game => {},
+                    CameraMode::Freecam => {
+                        let mut freecam_input = FreeCamInput::default();
+
+                        let orientation_delta = input.orientation_delta();
+                        freecam_input.mouse_delta = Vec2::new(
+                            orientation_delta.0,
+                            orientation_delta.1,
+                        );
+
+                        input.key_pressed(0x57).then(|| freecam_input.forward += 1.0);
+                        input.key_pressed(0x53).then(|| freecam_input.forward -= 1.0);
+                        input.key_pressed(0x44).then(|| freecam_input.right += 1.0);
+                        input.key_pressed(0x41).then(|| freecam_input.right -= 1.0);
+
+                        freecam.update(&freecam_input, delta.as_secs_f32());
+
+                        let rot = Mat3::from_quat(freecam.rotation);
+                        cs_camera.pers_cam_1.matrix.0 = F32Vector4(
+                            rot.col(0).x,
+                            rot.col(0).y,
+                            rot.col(0).z,
+                            0.0,
+                        );
+
+                        cs_camera.pers_cam_1.matrix.1 = F32Vector4(
+                            rot.col(1).x,
+                            rot.col(1).y,
+                            rot.col(1).z,
+                            0.0,
+                        );
+
+                        cs_camera.pers_cam_1.matrix.2 = F32Vector4(
+                            rot.col(2).x,
+                            rot.col(2).y,
+                            rot.col(2).z,
+                            0.0,
+                        );
+
+                        // Patch up main cam matrix with our overriden position and rotation. 
+                        cs_camera.pers_cam_1.matrix.3 = F32Vector4(
+                            freecam.translation.x,
+                            freecam.translation.y,
+                            freecam.translation.z,
+                            1.0,
+                        );
+                    },
+                }
+
+                // camera_manager.update(&input, &delta);
+                // // Update the camera's matrix if necessary
+                // camera_manager.apply(
+                //     &offsets,
+                //     cs_camera,
+                //     field_area.as_ref(),
+                //     cs_flipper,
+                //     world_chr_man,
+                // );
             }, CSTaskGroupIndex::Draw_Pre);
         }
 
@@ -267,6 +349,31 @@ dll_syringe::payload_procedure! {
         }
 
         Ok(())
+    }
+}
+
+fn handle_inbound_event(event: &InboundGameControlEvent, camera_mode: &mut CameraMode) {
+    match event {
+        _ => {
+            log::info!("Got game control event: {event:?}")
+        }
+        // InboundGameControlEvent::Initialize { settings } => todo!(),
+        // InboundGameControlEvent::Settings { settings } => todo!(),
+        // InboundGameControlEvent::Keyframes { keyframes } => todo!(),
+        // InboundGameControlEvent::Play { time, keyframes } => todo!(),
+        // InboundGameControlEvent::Pause { time } => todo!(),
+        // InboundGameControlEvent::Scrub { time } => todo!(),
+        // InboundGameControlEvent::PlaybackModeState { state } => todo!(),
+        // InboundGameControlEvent::TimeMultiplier { multiplier } => todo!(),
+        // InboundGameControlEvent::GlobalFov { fov, enabled } => todo!(),
+        // InboundGameControlEvent::RequestTimeOfDay { hours, minutes, seconds } => todo!(),
+        // InboundGameControlEvent::HudState { hidden } => todo!(),
+        // InboundGameControlEvent::SetCharacterNoDead { value } => todo!(),
+        // InboundGameControlEvent::SetCharacterNoMove { value } => todo!(),
+        // InboundGameControlEvent::SetFreecamMovementSpeed { value } => todo!(),
+        // InboundGameControlEvent::SetFreecamRotationSpeed { value } => todo!(),
+        // InboundGameControlEvent::SetDebugPause { enabled } => todo!(),
+        // InboundGameControlEvent::SetFreecamEnabled { enabled } => todo!(),
     }
 }
 

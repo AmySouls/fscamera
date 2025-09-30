@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::mem::transmute;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use crossbeam::queue::SegQueue;
 use retour::static_detour;
@@ -41,6 +43,8 @@ enum InputEvent {
 pub struct Input {
     orientation_delta: (f32, f32),
     movement_delta: (f32, f32, f32),
+
+    debounce: HashMap<i32, Instant>,
 }
 
 type GetRawInputDataFn = unsafe extern "system" fn(
@@ -88,6 +92,20 @@ impl Input {
 
     pub fn key_pressed(&self, key: i32) -> bool {
         return unsafe { GetKeyState(key) } < 0;
+    }
+
+    pub fn key_pressed_debounced(&mut self, key: i32, timeout: Duration) -> bool {
+        if self.key_pressed(key)
+            && self
+                .debounce
+                .get(&key)
+                .is_none_or(|e| (Instant::now() - *e) > timeout)
+        {
+            let _ = self.debounce.insert(key, Instant::now());
+            return true;
+        }
+
+        false
     }
 
     pub fn orientation_delta(&self) -> (f32, f32) {

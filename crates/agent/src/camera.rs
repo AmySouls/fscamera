@@ -10,8 +10,16 @@ use protocol::{
 };
 
 use crate::{
-    DEBUG_PAUSE_ENABLED, DISABLE_HUD, OUTBOUND_EVENT_QUEUE, freecam::{FORWARD, Freecam, RIGHT, UP}, game::{CSCamera, CSFlipperImp, FieldArea, FreecamMode, GameOffsets, WorldAreaTime, WorldChrMan}, get_offsets, input::Input
+    DEBUG_PAUSE_ENABLED,
+    DISABLE_HUD,
+    OUTBOUND_EVENT_QUEUE,
+    // freecam::{FORWARD, Freecam, RIGHT, UP},
+    game::{CSCamera, CSFlipperImp, FieldArea, FreecamMode, GameOffsets, WorldAreaTime, WorldChrMan},
+    get_offsets,
+    input::Input
 };
+
+use camera::FreeCam;
 
 pub(crate) struct CameraManager {
     time_multiplier: f32,
@@ -32,7 +40,7 @@ pub(crate) struct CameraManager {
     character_no_dead: bool,
     character_no_move: bool,
 
-    freecam: Freecam,
+    freecam: FreeCam,
 }
 
 impl Default for CameraManager {
@@ -56,71 +64,71 @@ impl Default for CameraManager {
 
 impl CameraManager {
     pub fn handle_event(&mut self, event: &InboundGameControlEvent) {
-        match event {
-            InboundGameControlEvent::Initialize { settings } => {
-                self.keyframes = vec![];
-                self.active = false;
-                self.playing = false;
-                self.time_multiplier = 1.0;
-                self.settings = settings.clone();
-            }
-            InboundGameControlEvent::Settings { settings } => {
-                self.settings = settings.clone();
-            }
-            InboundGameControlEvent::Keyframes { keyframes } => {
-                self.keyframes = keyframes.clone();
-            }
-            InboundGameControlEvent::Play { time, keyframes } => {
-                self.play_playback(*time, keyframes)
-            }
-            InboundGameControlEvent::Pause { time } => self.pause_playback(*time),
-            InboundGameControlEvent::Scrub { time } => self.scrub_playback(*time),
-            InboundGameControlEvent::PlaybackModeState { state } => self.set_playback_state(*state),
-            InboundGameControlEvent::TimeMultiplier { multiplier } => {
-                self.time_multiplier = *multiplier
-            }
-            InboundGameControlEvent::GlobalFov { fov, enabled } => {
-                self.global_fov = *fov;
-                self.override_fov = *enabled;
-            }
-            InboundGameControlEvent::RequestTimeOfDay {
-                hours,
-                minutes,
-                seconds,
-            } => {
-                let world_area_time = unsafe { get_instance::<WorldAreaTime>() };
-                let Some(world_area_time) = world_area_time
-                else {
-                    return;
-                };
-
-                world_area_time.request_hour = *hours as _;
-                world_area_time.request_minute = *minutes as _;
-                world_area_time.request_second = *seconds as _;
-            }
-            InboundGameControlEvent::HudState { hidden } => {
-                DISABLE_HUD.store(*hidden, Ordering::Relaxed);
-            }
-            InboundGameControlEvent::SetCharacterNoDead { value } => {
-                self.character_no_dead = *value;
-            }
-            InboundGameControlEvent::SetCharacterNoMove { value } => {
-                self.character_no_move = *value;
-            }
-            InboundGameControlEvent::SetFreecamMovementSpeed { value } => {
-                self.freecam.set_movement_speed_multiplier(*value);
-            }
-            InboundGameControlEvent::SetFreecamRotationSpeed { value } => {
-                self.freecam.set_rotation_speed_multiplier(*value);
-            }
-            InboundGameControlEvent::SetDebugPause { enabled } => {
-                DEBUG_PAUSE_ENABLED.store(*enabled, Ordering::Relaxed);
-            }
-            InboundGameControlEvent::SetFreecamEnabled { enabled } => {
-                self.freecam.set_enabled(*enabled);
-                self.character_no_move = true;
-            }
-        }
+        // match event {
+        //     InboundGameControlEvent::Initialize { settings } => {
+        //         self.keyframes = vec![];
+        //         self.active = false;
+        //         self.playing = false;
+        //         self.time_multiplier = 1.0;
+        //         self.settings = settings.clone();
+        //     }
+        //     InboundGameControlEvent::Settings { settings } => {
+        //         self.settings = settings.clone();
+        //     }
+        //     InboundGameControlEvent::Keyframes { keyframes } => {
+        //         self.keyframes = keyframes.clone();
+        //     }
+        //     InboundGameControlEvent::Play { time, keyframes } => {
+        //         self.play_playback(*time, keyframes)
+        //     }
+        //     InboundGameControlEvent::Pause { time } => self.pause_playback(*time),
+        //     InboundGameControlEvent::Scrub { time } => self.scrub_playback(*time),
+        //     InboundGameControlEvent::PlaybackModeState { state } => self.set_playback_state(*state),
+        //     InboundGameControlEvent::TimeMultiplier { multiplier } => {
+        //         self.time_multiplier = *multiplier
+        //     }
+        //     InboundGameControlEvent::GlobalFov { fov, enabled } => {
+        //         self.global_fov = *fov;
+        //         self.override_fov = *enabled;
+        //     }
+        //     InboundGameControlEvent::RequestTimeOfDay {
+        //         hours,
+        //         minutes,
+        //         seconds,
+        //     } => {
+        //         let world_area_time = unsafe { get_instance::<WorldAreaTime>() };
+        //         let Some(world_area_time) = world_area_time
+        //         else {
+        //             return;
+        //         };
+        //
+        //         world_area_time.request_hour = *hours as _;
+        //         world_area_time.request_minute = *minutes as _;
+        //         world_area_time.request_second = *seconds as _;
+        //     }
+        //     InboundGameControlEvent::HudState { hidden } => {
+        //         DISABLE_HUD.store(*hidden, Ordering::Relaxed);
+        //     }
+        //     InboundGameControlEvent::SetCharacterNoDead { value } => {
+        //         self.character_no_dead = *value;
+        //     }
+        //     InboundGameControlEvent::SetCharacterNoMove { value } => {
+        //         self.character_no_move = *value;
+        //     }
+        //     InboundGameControlEvent::SetFreecamMovementSpeed { value } => {
+        //         self.freecam.set_movement_speed_multiplier(*value);
+        //     }
+        //     InboundGameControlEvent::SetFreecamRotationSpeed { value } => {
+        //         self.freecam.set_rotation_speed_multiplier(*value);
+        //     }
+        //     InboundGameControlEvent::SetDebugPause { enabled } => {
+        //         DEBUG_PAUSE_ENABLED.store(*enabled, Ordering::Relaxed);
+        //     }
+        //     InboundGameControlEvent::SetFreecamEnabled { enabled } => {
+        //         self.freecam.set_enabled(*enabled);
+        //         self.character_no_move = true;
+        //     }
+        // }
     }
 
     fn set_playback_state(&mut self, state: bool) {
@@ -189,74 +197,74 @@ impl CameraManager {
             }
         }
 
-        if self.active {
-            // Test sent keyframe
-            if let Some(kf) = self.keyframes.first()
-                && let Some(wbi) = field_area.world_info_owner.world_block_info_by_map(&kf.map_id.into()) {
-                let q_pitch = glm::quat_angle_axis(kf.orientation.0, &RIGHT);
-                let q_yaw = glm::quat_angle_axis(kf.orientation.1, &UP);
-                let q_roll = glm::quat_angle_axis(kf.orientation.2, &FORWARD);
-                let rot = glm::quat_to_mat3(&(q_roll * q_pitch * q_yaw).normalize());
-
-                // Build up new matrix to swap the primary view matrix with.
-                camera.pers_cam_1.matrix.0 = F32Vector4(rot.m11, rot.m12, rot.m13, 0.0);
-                camera.pers_cam_1.matrix.1 = F32Vector4(rot.m21, rot.m22, rot.m23, 0.0);
-                camera.pers_cam_1.matrix.2 = F32Vector4(rot.m31, rot.m32, rot.m33, 0.0);
-                camera.pers_cam_1.matrix.3 = F32Vector4(
-                    kf.position.x + wbi.physics_center.0,
-                    kf.position.y + wbi.physics_center.1,
-                    kf.position.z + wbi.physics_center.2,
-                    1.0,
-                );
-                camera.pers_cam_1.fov = kf.fov;
-            }
-
-            // Map keyframes to usable format
-            // TODO: we can avoid doing this every frame.
-            // let playback_frames = self
-            //     .keyframes
-            //     .iter()
-            //     .map(|kf| {
-            //         let mut position = Vec3::new(0.0, 0.0, 0.0);
-            //         if let Some(world_block_info) = field_area
-            //             .world_info_owner
-            //             .world_block_info_by_map(&kf.map_id.into())
-            //         {
-            //             position = Vec3::new(
-            //                 world_block_info.physics_center.0 + kf.position.x,
-            //                 world_block_info.physics_center.1 + kf.position.y,
-            //                 world_block_info.physics_center.2 + kf.position.z,
-            //             );
-            //         }
-            //
-            //         PlaybackFrame {
-            //             time: kf.time,
-            //             position,
-            //             orientation: kf.orientation,
-            //             fov: kf.fov,
-            //             tension: kf.tension,
-            //         }
-            //     })
-            //     .collect::<Vec<_>>();
-
-            // if let Some((position, rotation, fov)) =
-            //     PlaybackFrame::interpolate(&playback_frames, self.playback_time)
-            // {
-            //     let rotation = glm::quat_to_mat4(&glm::make_quat(&[
-            //         rotation.0, rotation.1, rotation.2, rotation.3,
-            //     ]));
-            //
-            //     // Build up new matrix to swap the primary view matrix with.
-            //     camera.pers_cam_1.matrix.0 =
-            //         F32Vector4(rotation.m11, rotation.m12, rotation.m13, rotation.m14);
-            //     camera.pers_cam_1.matrix.1 =
-            //         F32Vector4(rotation.m21, rotation.m22, rotation.m23, rotation.m24);
-            //     camera.pers_cam_1.matrix.2 =
-            //         F32Vector4(rotation.m31, rotation.m32, rotation.m33, rotation.m34);
-            //     camera.pers_cam_1.matrix.3 = F32Vector4(position.x, position.y, position.z, 1.0);
-            //     camera.pers_cam_1.fov = fov;
-            // }
-        }
+        // if self.active {
+        //     // Test sent keyframe
+        //     if let Some(kf) = self.keyframes.first()
+        //         && let Some(wbi) = field_area.world_info_owner.world_block_info_by_map(&kf.map_id.into()) {
+        //         let q_pitch = glm::quat_angle_axis(kf.orientation.0, &RIGHT);
+        //         let q_yaw = glm::quat_angle_axis(kf.orientation.1, &UP);
+        //         let q_roll = glm::quat_angle_axis(kf.orientation.2, &FORWARD);
+        //         let rot = glm::quat_to_mat3(&(q_roll * q_pitch * q_yaw).normalize());
+        //
+        //         // Build up new matrix to swap the primary view matrix with.
+        //         camera.pers_cam_1.matrix.0 = F32Vector4(rot.m11, rot.m12, rot.m13, 0.0);
+        //         camera.pers_cam_1.matrix.1 = F32Vector4(rot.m21, rot.m22, rot.m23, 0.0);
+        //         camera.pers_cam_1.matrix.2 = F32Vector4(rot.m31, rot.m32, rot.m33, 0.0);
+        //         camera.pers_cam_1.matrix.3 = F32Vector4(
+        //             kf.position.x + wbi.physics_center.0,
+        //             kf.position.y + wbi.physics_center.1,
+        //             kf.position.z + wbi.physics_center.2,
+        //             1.0,
+        //         );
+        //         camera.pers_cam_1.fov = kf.fov;
+        //     }
+        //
+        //     // Map keyframes to usable format
+        //     // TODO: we can avoid doing this every frame.
+        //     // let playback_frames = self
+        //     //     .keyframes
+        //     //     .iter()
+        //     //     .map(|kf| {
+        //     //         let mut position = Vec3::new(0.0, 0.0, 0.0);
+        //     //         if let Some(world_block_info) = field_area
+        //     //             .world_info_owner
+        //     //             .world_block_info_by_map(&kf.map_id.into())
+        //     //         {
+        //     //             position = Vec3::new(
+        //     //                 world_block_info.physics_center.0 + kf.position.x,
+        //     //                 world_block_info.physics_center.1 + kf.position.y,
+        //     //                 world_block_info.physics_center.2 + kf.position.z,
+        //     //             );
+        //     //         }
+        //     //
+        //     //         PlaybackFrame {
+        //     //             time: kf.time,
+        //     //             position,
+        //     //             orientation: kf.orientation,
+        //     //             fov: kf.fov,
+        //     //             tension: kf.tension,
+        //     //         }
+        //     //     })
+        //     //     .collect::<Vec<_>>();
+        //
+        //     // if let Some((position, rotation, fov)) =
+        //     //     PlaybackFrame::interpolate(&playback_frames, self.playback_time)
+        //     // {
+        //     //     let rotation = glm::quat_to_mat4(&glm::make_quat(&[
+        //     //         rotation.0, rotation.1, rotation.2, rotation.3,
+        //     //     ]));
+        //     //
+        //     //     // Build up new matrix to swap the primary view matrix with.
+        //     //     camera.pers_cam_1.matrix.0 =
+        //     //         F32Vector4(rotation.m11, rotation.m12, rotation.m13, rotation.m14);
+        //     //     camera.pers_cam_1.matrix.1 =
+        //     //         F32Vector4(rotation.m21, rotation.m22, rotation.m23, rotation.m24);
+        //     //     camera.pers_cam_1.matrix.2 =
+        //     //         F32Vector4(rotation.m31, rotation.m32, rotation.m33, rotation.m34);
+        //     //     camera.pers_cam_1.matrix.3 = F32Vector4(position.x, position.y, position.z, 1.0);
+        //     //     camera.pers_cam_1.fov = fov;
+        //     // }
+        // }
 
         if !self.active && self.override_fov {
             camera.pers_cam_1.fov = self.global_fov;
@@ -273,7 +281,7 @@ impl CameraManager {
             unsafe { *no_dead = self.character_no_dead };
         }
 
-        self.freecam.apply();
+        // self.freecam.apply();
 
         // Apply time multiplier appropriate to settings
         match (
@@ -287,7 +295,7 @@ impl CameraManager {
     }
 
     pub fn update(&mut self, input: &Input, delta: &Duration) {
-        self.freecam.update(input, delta);
+        // self.freecam.update(input, delta);
 
         if self.playing {
             self.playback_time += delta.as_secs_f32();

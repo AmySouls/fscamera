@@ -6,6 +6,14 @@ use crate::keyframe::Orientation;
 
 pub mod keyframe;
 
+#[derive(PartialEq)]
+pub enum CameraMode {
+    /// Game is in full control of the camera.
+    Game,
+    /// Freecam mode is active
+    Freecam,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum InboundGameControlEvent {
     Initialize { settings: SettingsData },

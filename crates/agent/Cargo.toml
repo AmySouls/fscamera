@@ -9,6 +9,7 @@ crate-type = ["cdylib"]
 [dependencies]
 dll-syringe.workspace = true
 protocol.workspace = true
+camera.workspace = true
 eldenring = { path = "../../../chains-bindings/crates/eldenring" }
 eldenring-util = { path = "../../../chains-bindings/crates/eldenring-util" }
 fromsoft-shared = { package = "fromsoftware-shared", path = "../../../chains-bindings/crates/shared" }
@@ -23,6 +24,7 @@ nalgebra-glm.workspace = true
 thiserror.workspace = true
 gilrs.workspace = true
 from-singleton = "2"
+glam.workspace = true
 
 [dependencies.windows]
 version = "0.61.3"
