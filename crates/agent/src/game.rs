@@ -98,6 +98,14 @@ pub(crate) fn get_offsets(program: &Program) -> Result<GameOffsets, RemoteError>
             scaleform_update_b: 0xe71e50,
             no_dead_flag: 0x3b9ab24,
         },
+        ("ELDEN RING NIGHTREIGN", "1.2.4.0") => GameOffsets {
+            enable_freecam_controls: 0x17d85c5,
+            enable_freecam_toggle: 0x43ba39d,
+            move_map_step: 0xbf0260,
+            field_area: 0x3b9dc10,
+            scaleform_update_b: 0x56be3af,
+            no_dead_flag: 0x3b9ab24,
+        },
         _ => return Err(RemoteError::UnknownGame),
     })
 }
@@ -228,7 +236,6 @@ impl WorldInfoOwner {
                 .world_grid_area_info()
                 .iter()
                 .find(|w| w.base.hosts_small_bases)?;
-            log::info!("Found small base world are info {:x?}", world_area_info as *const WorldGridAreaInfo);
 
             for small_base in world_area_info.small_bases.iter() {
                 if small_base.block.small_base_block_id == block_id {

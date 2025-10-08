@@ -47,12 +47,20 @@ pub(crate) struct CameraControlApp {
 
 impl Default for CameraControlApp {
     fn default() -> Self {
-        let settings = get_settings().expect("Could not load settings");
+        let mut notify = Toasts::default();
+
+        let settings = match get_settings() {
+            Ok(s) => s,
+            Err(_) => {
+                notify.error("Was unable to load stored settings. Did you update the settings with a newer version of the tool?");
+                SettingsData::default()
+            },
+        };
 
         Self {
             process: None,
             remote: None,
-            notify: Toasts::default(),
+            notify,
 
             // Time request control
             request_hours: 6,
@@ -98,21 +106,21 @@ impl eframe::App for CameraControlApp {
             // Need this here to re-request for poll_events as well as timeline visual updates.
             ctx.request_repaint();
 
-            if let Ok(events) = remote.poll_events() {
-                for event in events {
-                    match event {
-                        OutboundGameControlEvent::KeybindAction(action) => {
-                            self.handle_keybind_action(&action)
-                        }
-                    }
-                }
-            } else {
-                self.notify.error(
-                    "Could not poll events from remote. Reattach to game please.".to_string(),
-                );
-                self.remote = None;
-                self.playing = false;
-            }
+            // if let Ok(events) = remote.poll_events() {
+            //     for event in events {
+            //         match event {
+            //             OutboundGameControlEvent::KeybindAction(action) => {
+            //                 self.handle_keybind_action(&action)
+            //             }
+            //         }
+            //     }
+            // } else {
+            //     self.notify.error(
+            //         "Could not poll events from remote. Reattach to game please.".to_string(),
+            //     );
+            //     self.remote = None;
+            //     self.playing = false;
+            // }
         }
 
         self.notify.show(ctx);

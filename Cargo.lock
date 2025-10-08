@@ -127,7 +127,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "agent"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "crossbeam",
  "dll-syringe",
@@ -1759,7 +1759,7 @@ dependencies = [
 
 [[package]]
 name = "gui"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "directories",
  "dll-syringe",
@@ -3082,7 +3082,7 @@ checksum = "3eb8486b569e12e2c32ad3e204dbaba5e4b5b216e9367044f25f1dba42341773"
 
 [[package]]
 name = "protocol"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "nalgebra",
  "nalgebra-glm",
