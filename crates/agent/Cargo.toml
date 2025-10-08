@@ -19,8 +19,6 @@ log-panics = { version = "2", features = ["with-backtrace"]}
 pelite = "0.10"
 retour = { version = "0.4.0-alpha.3", features = ["static-detour"] }
 crossbeam = "0.8"
-nalgebra.workspace = true
-nalgebra-glm.workspace = true
 thiserror.workspace = true
 gilrs.workspace = true
 from-singleton = "2"

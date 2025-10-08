@@ -3,10 +3,10 @@ use crate::process::{self, GameProcess, RemoteGame};
 use crate::program_title;
 use crate::save::{prompt_and_load_keyframes, prompt_and_save_keyframes};
 use crate::settings::{get_settings, save_settings};
-use eframe::egui::{self, CentralPanel, ComboBox, DragValue, Key, TopBottomPanel};
+use eframe::egui::{self, CentralPanel, ComboBox, DragValue, Key, Slider, TopBottomPanel};
 use egui::{Color32, Pos2, Rect, Sense, Vec2};
 use egui_notify::Toasts;
-use protocol::keyframe::{Keyframe, Orientation, Quat, Vec3};
+use protocol::keyframe::{Keyframe, Quat, Vec3};
 use protocol::{InboundGameControlEvent, Keybind, KeybindAction, KeybindInput, OutboundGameControlEvent, SettingsData};
 
 pub(crate) struct CameraControlApp {
@@ -14,34 +14,34 @@ pub(crate) struct CameraControlApp {
     remote: Option<RemoteGame>,
     notify: Toasts,
 
-    request_hours: u8,
-    request_minutes: u8,
-    request_seconds: u8,
+    // Game control
+    time_of_day_control: u32,
+    debug_pause_enabled: bool,
+    freecam_enabled: bool,
+    character_no_dead: bool,
+    character_no_move: bool,
+    gamespeed_multiplier: f32,
+    global_fov: f32,
+    fov_override_enabled: bool,
+    hud_disabled: bool,
 
+    // Settings
+    settings_open: bool,
+    settings: SettingsData,
+    waiting_for_keybind_input: Option<usize>,
+
+    // Keyframe
     keyframes: Vec<Keyframe>,
     dragging_index: Option<usize>,
     selected_index: Option<usize>,
     timeline_duration: f32,
-    gamespeed_multiplier: f32,
-    global_fov: f32,
-    override_fov: bool,
     playing: bool,
     playback_mode_active: bool,
-    disable_hud: bool,
     playback_time: f32,
     last_update: Option<std::time::Instant>,
     freecam_movement_speed: f32,
     freecam_rotation_speed: f32,
-    debug_pause: bool,
-    freecam_enabled: bool,
-
-    character_no_dead: bool,
-    character_no_move: bool,
-
     place_keyframes_at_playback_time: bool,
-    settings_open: bool,
-    settings: SettingsData,
-    waiting_for_keybind_input: Option<usize>,
 }
 
 impl Default for CameraControlApp {
@@ -53,31 +53,30 @@ impl Default for CameraControlApp {
             remote: None,
             notify: Toasts::default(),
 
-            // Time request control
-            request_hours: 6,
-            request_minutes: 0,
-            request_seconds: 0,
+            // Time request control, default 06:00
+            time_of_day_control: 6 * 60,
+            // Debug pause + frame-by-frame
+            debug_pause_enabled: false,
+            freecam_enabled: false,
+            character_no_dead: false,
+            character_no_move: false,
+            gamespeed_multiplier: 1.0,
+            global_fov: 48.0f32.to_radians(),
+            fov_override_enabled: false,
+            hud_disabled: false,
+
+            freecam_movement_speed: 1.0,
+            freecam_rotation_speed: 1.0,
 
             // Other garbage
             keyframes: Vec::new(),
             dragging_index: None,
             selected_index: None,
-            timeline_duration: 30.0,
-            gamespeed_multiplier: 1.0,
-            global_fov: 48.0f32.to_radians(),
-            override_fov: false,
+            timeline_duration: 60.0,
             playing: false,
             playback_mode_active: false,
-            disable_hud: false,
             playback_time: 0.0,
             last_update: None,
-            freecam_movement_speed: 1.0,
-            freecam_rotation_speed: 1.0,
-            debug_pause: false,
-            freecam_enabled: false,
-
-            character_no_dead: false,
-            character_no_move: false,
 
             place_keyframes_at_playback_time: false,
             settings_open: false,
@@ -137,7 +136,7 @@ impl CameraControlApp {
             KeybindAction::AdjustGamespeed(multiplier) => {
                 self.set_gamespeed(&(self.gamespeed_multiplier + multiplier))
             }
-            KeybindAction::ToggleDebugPause => self.toggle_debug_pause(),
+            KeybindAction::ToggleDebugPause => self.toggle_debug_pause_enabled(),
             KeybindAction::ToggleFreecam => self.toggle_freecam(),
         }
     }
@@ -435,38 +434,13 @@ impl CameraControlApp {
                         .error(format!("Could not change game speed: {e}"));
                 }
 
-                ui.separator();
-                if ui.checkbox(&mut self.override_fov, "").changed()
-                    && let Err(e) = self.remote.as_ref().unwrap().post_event(
-                        InboundGameControlEvent::GlobalFov {
-                            fov: self.global_fov,
-                            enabled: self.override_fov,
-                        },
-                    )
-                {
-                    self.notify
-                        .error(format!("Could not change global FOV: {e}"));
-                }
-
-                if drag_angle(ui, "", &mut self.global_fov).changed()
-                    && let Err(e) = self.remote.as_ref().unwrap().post_event(
-                        InboundGameControlEvent::GlobalFov {
-                            fov: self.global_fov,
-                            enabled: self.override_fov,
-                        },
-                    )
-                {
-                    self.notify
-                        .error(format!("Could not change global FOV: {e}"));
-                }
-                ui.label("Global FOV");
 
                 ui.separator();
 
-                if ui.checkbox(&mut self.disable_hud, "Disable HUD").changed()
+                if ui.checkbox(&mut self.hud_disabled, "Disable HUD").changed()
                     && let Err(e) = self.remote.as_ref().unwrap().post_event(
-                        InboundGameControlEvent::HudState {
-                            hidden: self.disable_hud,
+                        InboundGameControlEvent::SetHudDisabled {
+                            disabled: self.hud_disabled,
                         },
                     )
                 {
@@ -509,7 +483,7 @@ impl CameraControlApp {
                     ui,
                     "FC movement speed",
                     &mut self.freecam_movement_speed,
-                    true,
+                    false,
                 )
                 .changed()
                     && let Err(e) = self.remote.as_ref().unwrap().post_event(
@@ -526,7 +500,7 @@ impl CameraControlApp {
                     ui,
                     "FC rotation speed",
                     &mut self.freecam_rotation_speed,
-                    true,
+                    false,
                 )
                 .changed()
                     && let Err(e) = self.remote.as_ref().unwrap().post_event(
@@ -538,39 +512,54 @@ impl CameraControlApp {
                     self.notify
                         .error(format!("Could not change freecam rotation speed: {e}"));
                 }
+
+                ui.separator();
+                if ui.checkbox(&mut self.fov_override_enabled, "").changed()
+                    && let Err(e) = self.remote.as_ref().unwrap().post_event(
+                        InboundGameControlEvent::GlobalFov {
+                            fov: self.global_fov,
+                            enabled: self.fov_override_enabled,
+                        },
+                    )
+                {
+                    self.notify
+                        .error(format!("Could not change global FOV: {e}"));
+                }
+
+                if drag_angle(ui, "", &mut self.global_fov).changed()
+                    && let Err(e) = self.remote.as_ref().unwrap().post_event(
+                        InboundGameControlEvent::GlobalFov {
+                            fov: self.global_fov,
+                            enabled: self.fov_override_enabled,
+                        },
+                    )
+                {
+                    self.notify
+                        .error(format!("Could not change global FOV: {e}"));
+                }
+                ui.label("FC FoV");
             });
 
             ui.separator();
 
             ui.horizontal(|ui| {
-                ui.add(
-                    DragValue::new(&mut self.request_hours)
-                        .speed(1)
-                        .prefix("H")
-                        .range(0..=23),
-                );
-                ui.add(
-                    DragValue::new(&mut self.request_minutes)
-                        .speed(1)
-                        .prefix("M")
-                        .range(0..=59),
-                );
-                ui.add(
-                    DragValue::new(&mut self.request_seconds)
-                        .speed(1)
-                        .prefix("S")
-                        .range(0..=59),
-                );
+                // Convert minutes to hh:mm string
+                let hours = self.time_of_day_control / 60;
+                let mins = self.time_of_day_control % 60;
+                let label = format!("{:02}:{:02}", hours, mins);
 
-                if ui.button("Set Game Time").clicked()
-                    && let Err(e) = self.remote.as_ref().unwrap().post_event(
-                        InboundGameControlEvent::RequestTimeOfDay {
-                            hours: self.request_hours,
-                            minutes: self.request_minutes,
-                            seconds: self.request_seconds,
-                        },
-                    )
-                {
+                if ui.add(
+                    Slider::new(&mut self.time_of_day_control, 0..=(23 * 60 + 59))
+                        .show_value(false)
+                        .text(label)
+                        .step_by(1.0),
+                ).changed() && let Err(e) = self.remote.as_ref().unwrap().post_event(
+                    InboundGameControlEvent::SetTimeOfDay {
+                        hours: hours as u8,
+                        minutes: mins as u8,
+                        seconds: 0,
+                    },
+                ) {
                     self.notify
                         .error(format!("Could not dispatch scrub event to game: {e}"));
                 }
@@ -619,26 +608,15 @@ impl CameraControlApp {
                     });
 
                     ui.horizontal(|ui| {
-                        ui.label("Rotation:");
-                        changed |= drag_pitch(ui, "pitch", &mut kf.orientation.0).changed();
-                        changed |= drag_angle_signed(ui, "yaw", &mut kf.orientation.1).changed();
-                        changed |= drag_angle_signed(ui, "roll", &mut kf.orientation.2).changed();
+                        ui.label(format!("Rotation: {:?}", kf.orientation));
+                        // changed |= drag_pitch(ui, "pitch", &mut kf.orientation.0).changed();
+                        // changed |= drag_angle_signed(ui, "yaw", &mut kf.orientation.1).changed();
+                        // changed |= drag_angle_signed(ui, "roll", &mut kf.orientation.2).changed();
                     });
 
                     ui.horizontal(|ui| {
                         ui.label("FOV:");
                         changed |= drag_angle(ui, "", &mut kf.fov).changed();
-                    });
-
-                    ui.horizontal(|ui| {
-                        changed |= ui
-                            .add(
-                                DragValue::new(&mut kf.tension)
-                                    .speed(0.01)
-                                    .range(0.0..=1.0)
-                                    .prefix("Camera path tension: "),
-                            )
-                            .changed();
                     });
 
                     ui.separator();
@@ -659,9 +637,8 @@ impl CameraControlApp {
                         map_id: -1,
                         time,
                         position: Vec3::new(0.0, 0.0, 0.0),
-                        orientation: Orientation::default(),
+                        orientation: Quat::IDENTITY,
                         fov: 0.89,
-                        tension: 0.5,
                     };
 
                     match self.remote.as_ref().unwrap().snapshot_camera_state() {
@@ -906,9 +883,8 @@ impl CameraControlApp {
             map_id: -1,
             time,
             position: Vec3::new(0.0, 0.0, 0.0),
-            orientation: Orientation::default(),
+            orientation: Quat::IDENTITY,
             fov: 0.89,
-            tension: 0.5,
         };
 
         match self.remote.as_ref().unwrap().snapshot_camera_state() {
@@ -941,14 +917,14 @@ impl CameraControlApp {
     }
 
     fn toggle_hud(&mut self) {
-        self.disable_hud = !self.disable_hud;
+        self.hud_disabled = !self.hud_disabled;
 
         if let Err(e) =
             self.remote
                 .as_ref()
                 .unwrap()
-                .post_event(InboundGameControlEvent::HudState {
-                    hidden: self.disable_hud,
+                .post_event(InboundGameControlEvent::SetHudDisabled {
+                    disabled: self.hud_disabled,
                 })
         {
             self.notify.error(format!("Could not disable HUD: {e}"));
@@ -986,7 +962,7 @@ impl CameraControlApp {
     }
 
     fn toggle_fov_override(&mut self) {
-        self.override_fov = !self.override_fov;
+        self.fov_override_enabled = !self.fov_override_enabled;
 
         if let Err(e) =
             self.remote
@@ -994,7 +970,7 @@ impl CameraControlApp {
                 .unwrap()
                 .post_event(InboundGameControlEvent::GlobalFov {
                     fov: self.global_fov,
-                    enabled: self.override_fov,
+                    enabled: self.fov_override_enabled,
                 })
         {
             self.notify
@@ -1011,7 +987,7 @@ impl CameraControlApp {
                 .unwrap()
                 .post_event(InboundGameControlEvent::GlobalFov {
                     fov: self.global_fov,
-                    enabled: self.override_fov,
+                    enabled: self.fov_override_enabled,
                 })
         {
             self.notify
@@ -1035,15 +1011,15 @@ impl CameraControlApp {
         }
     }
 
-    fn toggle_debug_pause(&mut self) {
-        self.debug_pause = !self.debug_pause;
+    fn toggle_debug_pause_enabled(&mut self) {
+        self.debug_pause_enabled = !self.debug_pause_enabled;
 
         if let Err(e) =
             self.remote
                 .as_ref()
                 .unwrap()
                 .post_event(InboundGameControlEvent::SetDebugPause {
-                    enabled: self.debug_pause,
+                    enabled: self.debug_pause_enabled,
                 })
         {
             self.notify
@@ -1066,7 +1042,6 @@ impl CameraControlApp {
                 .error(format!("Could not toggle freecam: {e}"));
         }
     }
-
 }
 
 pub enum KeybindRequest {

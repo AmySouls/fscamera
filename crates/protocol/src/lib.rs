@@ -2,16 +2,16 @@ use keyframe::{Keyframe, Quat, Vec3};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::keyframe::Orientation;
-
 pub mod keyframe;
 
 #[derive(PartialEq)]
 pub enum CameraMode {
     /// Game is in full control of the camera.
     Game,
-    /// Freecam mode is active
+    /// Freecam mode is active.
     Freecam,
+    /// Camera is in playback mode on a specific path.
+    Playback,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -22,11 +22,12 @@ pub enum InboundGameControlEvent {
     Play { time: f32, keyframes: Vec<Keyframe> },
     Pause { time: f32 },
     Scrub { time: f32 },
+
     PlaybackModeState { state: bool },
     TimeMultiplier { multiplier: f32 },
     GlobalFov { fov: f32, enabled: bool },
-    RequestTimeOfDay { hours: u8, minutes: u8, seconds: u8 },
-    HudState { hidden: bool },
+    SetTimeOfDay { hours: u8, minutes: u8, seconds: u8 },
+    SetHudDisabled { disabled: bool },
     SetCharacterNoDead { value: bool },
     SetCharacterNoMove { value: bool },
     SetFreecamMovementSpeed { value: f32 },
@@ -44,7 +45,7 @@ pub enum OutboundGameControlEvent {
 pub struct CameraState {
     pub map_id: i32,
     pub position: Vec3,
-    pub orientation: Orientation,
+    pub orientation: Quat,
     pub fov: f32,
 }
 
@@ -126,6 +127,25 @@ pub enum KeybindAction {
     AdjustGamespeed(f32),
     ToggleDebugPause,
     ToggleFreecam,
+}
+
+impl KeybindAction {
+    pub fn is_debounced(&self) -> bool {
+        match self {
+            KeybindAction::TogglePlaybackMode => true,
+            KeybindAction::CreateKeyframe => true,
+            KeybindAction::ToggleHUD => true,
+            KeybindAction::ToggleCharacterNoDead => true,
+            KeybindAction::ToggleCharacterNoMove => true,
+            KeybindAction::ToggleFovOverride => true,
+            KeybindAction::SetFov(_) => true,
+            KeybindAction::AdjustFov(_) => true,
+            KeybindAction::SetGameSpeed(_) => true,
+            KeybindAction::AdjustGamespeed(_) => true,
+            KeybindAction::ToggleDebugPause => true,
+            KeybindAction::ToggleFreecam => true,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -4,7 +4,7 @@ members = [
     "crates/agent",
     "crates/gui",
     "crates/protocol",
-    "crates/playground",
+    # "crates/playground",
     "crates/camera",
 ]
 
@@ -22,8 +22,6 @@ camera = { path = "crates/camera", version = "0.5.0", package = "camera" }
 thiserror = "1"
 dll-syringe = { version = "0.16", features = ["rpc-payload", "payload-utils"] }
 gilrs = "0.11"
-nalgebra = "0.33"
-nalgebra-glm = "0.19"
 glam = "0.30"
 
 [profile.release]

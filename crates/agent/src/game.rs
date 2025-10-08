@@ -1,13 +1,16 @@
+use std::mem::transmute;
 use std::{borrow::Cow, fmt::Display, ptr::NonNull, sync::LazyLock};
 
-use eldenring::{cs::CSPersCam, position::HavokPosition, Tree};
+use eldenring::{
+    cs::CSPersCam,
+    position::{BlockPosition, HavokPosition},
+    Tree,
+};
 use fromsoft_shared::{OwnedPtr, Program};
 use pelite::pe::Pe;
 use protocol::RemoteError;
 
 pub(crate) struct GameOffsets {
-    pub enable_freecam_controls: u32,
-    pub enable_freecam_toggle: u32,
     pub move_map_step: u32,
     pub field_area: u32,
     pub scaleform_update_b: u32,
@@ -50,48 +53,36 @@ static GAME_OFFSETS: LazyLock<Result<GameOffsets, RemoteError>> = LazyLock::new(
 
     Ok(match (product.as_str(), version.as_str()) {
         ("ELDEN RING NIGHTREIGN", "1.1.4.0") => GameOffsets {
-            enable_freecam_controls: 0xeee8a0,
-            enable_freecam_toggle: 0x4323cfd,
             move_map_step: 0xba8a70,
             field_area: 0x3b07678,
             scaleform_update_b: 0xe26460,
             no_dead_flag: 0x3b045c4,
         },
         ("ELDEN RING NIGHTREIGN", "1.1.5.0") => GameOffsets {
-            enable_freecam_controls: 0xeee8a0,
-            enable_freecam_toggle: 0x4323cfd,
             move_map_step: 0xba8a70,
             field_area: 0x3b07678,
             scaleform_update_b: 0xe26460,
             no_dead_flag: 0x3b045c4,
         },
         ("ELDEN RING NIGHTREIGN", "1.2.0.0") => GameOffsets {
-            enable_freecam_controls: 0x124e15,
-            enable_freecam_toggle: 0x439ae7d,
             move_map_step: 0xbe9ff0,
             field_area: 0x3b7e6f8,
             scaleform_update_b: 0xe6b8c0,
             no_dead_flag: 0x3b7b604,
         },
         ("ELDEN RING NIGHTREIGN", "1.2.1.0") => GameOffsets {
-            enable_freecam_controls: 0xf342b0,
-            enable_freecam_toggle: 0x439ae7d,
             move_map_step: 0xbea7e0,
             field_area: 0x3b7e6f8,
             scaleform_update_b: 0xe6c0b0,
             no_dead_flag: 0x3b7b604,
         },
         ("ELDEN RING NIGHTREIGN", "1.2.2.0") => GameOffsets {
-            enable_freecam_controls: 0xf383e0,
-            enable_freecam_toggle: 0x43ade9d,
             move_map_step: 0xbee8c0,
             field_area: 0x3b91710,
             scaleform_update_b: 0xe701e0,
             no_dead_flag: 0x3b8e624,
         },
         ("ELDEN RING NIGHTREIGN", "1.2.3.0") => GameOffsets {
-            enable_freecam_controls: 0xf3a100,
-            enable_freecam_toggle: 0x43ba39d,
             move_map_step: 0xbf0270,
             field_area: 0x3b9dc10,
             scaleform_update_b: 0xe71e50,
@@ -104,6 +95,51 @@ static GAME_OFFSETS: LazyLock<Result<GameOffsets, RemoteError>> = LazyLock::new(
 pub(crate) fn get_offsets(program: &Program) -> Result<&'static GameOffsets, &'static RemoteError> {
     (*GAME_OFFSETS).as_ref()
 }
+
+pub fn physics_coords_to_block_coords(
+    field_area: &FieldArea,
+    map_id: &MapId,
+    physics_coords: &HavokPosition,
+) -> Option<BlockPosition> {
+    let program = Program::current();
+    let offsets = get_offsets(&program).unwrap();
+
+    let Some(world_block_info) = field_area.world_info_owner.world_block_info_by_map(map_id) else {
+        return None;
+    };
+
+    let block_coords = BlockPosition(
+        physics_coords.0 - world_block_info.physics_center.0,
+        physics_coords.1 - world_block_info.physics_center.1,
+        physics_coords.2 - world_block_info.physics_center.2,
+        0.0,
+    );
+
+    Some(block_coords)
+}
+
+pub fn block_coords_to_physics_coords(
+    field_area: &FieldArea,
+    map_id: &MapId,
+    block_coords: &BlockPosition,
+) -> Option<HavokPosition> {
+    let program = Program::current();
+    let offsets = get_offsets(&program).unwrap();
+
+    let Some(world_block_info) = field_area.world_info_owner.world_block_info_by_map(map_id) else {
+        return None;
+    };
+
+    let physics_coords = HavokPosition(
+        block_coords.0 + world_block_info.physics_center.0,
+        block_coords.1 + world_block_info.physics_center.1,
+        block_coords.2 + world_block_info.physics_center.2,
+        0.0,
+    );
+
+    Some(physics_coords)
+}
+
 
 #[repr(C)]
 /// Source of name: RTTI

@@ -57,7 +57,6 @@ pub(crate) fn drag_pitch(ui: &mut Ui, label: &str, radians: &mut f32) -> Respons
     response
 }
 
-
 pub(crate) fn drag_percentage(ui: &mut Ui, label: &str, multiple: &mut f32, log: bool) -> Response {
     let mut percentage = *multiple * 100.0;
 

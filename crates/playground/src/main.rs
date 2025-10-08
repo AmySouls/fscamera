@@ -1,10 +1,19 @@
-use bevy::{input::mouse::MouseMotion, prelude::*, window::{CursorGrabMode, PrimaryWindow}};
-use camera::{FreeCam, FreeCamInput};
+use bevy::{
+    input::mouse::MouseMotion,
+    prelude::*,
+    window::{CursorGrabMode, PrimaryWindow},
+};
+use camera::{FreeCam, FreeCamInput, Space};
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(FreeCamRes(FreeCam::from(
+            Space {
+                right: glam::Vec3::X,
+                up: glam::Vec3::Y,
+                forward: glam::Vec3::NEG_Z,
+            },
             glam::Vec3::new(-2.5, 2.5, 9.0),
             glam::Quat::IDENTITY,
         )))
@@ -43,10 +52,12 @@ fn setup_scene(
     ));
 
     // Lighting
-    commands.spawn((PointLight {
-        shadows_enabled: true,
-        ..Default::default()
-    },));
+    commands.spawn((
+        PointLight {
+            shadows_enabled: true,
+            ..Default::default()
+        }
+    ));
 }
 
 fn freecam_input_system(
@@ -80,7 +91,7 @@ fn freecam_input_system(
             for ev in evr_motion.read() {
                 tmp += ev.delta;
             }
-            glam::Vec2::new(tmp.x, tmp.y)
+            glam::Vec2::new(-tmp.x, -tmp.y)
         };
     } else {
         for _ev in evr_motion.read() {}

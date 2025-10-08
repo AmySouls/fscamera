@@ -2,7 +2,6 @@ use std::{sync::atomic::Ordering, time::Duration};
 
 use eldenring_util::{input};
 use fromsoft_shared::{F32Vector4, OwnedPtr, Program, get_instance};
-use nalgebra_glm as glm;
 use pelite::pe::Pe;
 use protocol::{
     InboundGameControlEvent, KeybindInput, OutboundGameControlEvent, SettingsData,
@@ -18,8 +17,6 @@ use crate::{
     get_offsets,
     input::Input
 };
-
-use camera::FreeCam;
 
 pub(crate) struct CameraManager {
     time_multiplier: f32,
@@ -40,7 +37,7 @@ pub(crate) struct CameraManager {
     character_no_dead: bool,
     character_no_move: bool,
 
-    freecam: FreeCam,
+    // freecam: FreeCam,
 }
 
 impl Default for CameraManager {
@@ -57,7 +54,7 @@ impl Default for CameraManager {
             character_no_dead: false,
             character_no_move: false,
 
-            freecam: Default::default(),
+            // freecam: Default::default(),
         }
     }
 }
@@ -106,7 +103,7 @@ impl CameraManager {
         //         world_area_time.request_minute = *minutes as _;
         //         world_area_time.request_second = *seconds as _;
         //     }
-        //     InboundGameControlEvent::HudState { hidden } => {
+        //     InboundGameControlEvent::SetHudDisabled { hidden } => {
         //         DISABLE_HUD.store(*hidden, Ordering::Relaxed);
         //     }
         //     InboundGameControlEvent::SetCharacterNoDead { value } => {
@@ -188,7 +185,6 @@ impl CameraManager {
         world_chr_man: &mut WorldChrMan,
     ) {
         for bind in self.settings.keybinds.iter().filter(|b| b.active) {
-            // Handle key presses
             if let Some(KeybindInput::Keyboard(key)) = bind.input
                 && input::is_key_pressed(key)
             {
