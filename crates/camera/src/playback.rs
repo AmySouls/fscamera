@@ -49,6 +49,15 @@ impl PlaybackCam {
     }
 }
 
+fn hemifix(q: Quat) -> Quat {
+    let mut r = q;
+    if r.length_squared() == 0.0 {
+        r = Quat::IDENTITY;
+    }
+
+    r.normalize()
+}
+
 /// Intermediate state of the camera produced by interpolating between the keyframes. 
 #[derive(Default)]
 pub struct PlaybackFrame {
@@ -86,10 +95,16 @@ fn interpolate_frame(frames: &[Keyframe], t: f32) -> PlaybackFrame {
     let k2t = Vec3::new(k2.position.x, k2.position.y, k2.position.z);
     let k3t = Vec3::new(k3.position.x, k3.position.y, k3.position.z);
 
-    let k0r = Quat::from_xyzw(k0.orientation.0, k0.orientation.1, k0.orientation.2, k0.orientation.3);
-    let k1r = Quat::from_xyzw(k1.orientation.0, k1.orientation.1, k1.orientation.2, k1.orientation.3);
-    let k2r = Quat::from_xyzw(k2.orientation.0, k2.orientation.1, k2.orientation.2, k2.orientation.3);
-    let k3r = Quat::from_xyzw(k3.orientation.0, k3.orientation.1, k3.orientation.2, k3.orientation.3);
+    let k0r = hemifix(Quat::from_xyzw(k0.orientation.0, k0.orientation.1, k0.orientation.2, k0.orientation.3));
+    let mut k1r = hemifix(Quat::from_xyzw(k1.orientation.0, k1.orientation.1, k1.orientation.2, k1.orientation.3));
+    let mut k2r = hemifix(Quat::from_xyzw(k2.orientation.0, k2.orientation.1, k2.orientation.2, k2.orientation.3));
+    let mut k3r = hemifix(Quat::from_xyzw(k3.orientation.0, k3.orientation.1, k3.orientation.2, k3.orientation.3));
+
+    const ANTI_EPS: f32 = -0.9999;
+
+    if k1r.dot(k0r) < 0.0 && k1r.dot(k0r) > ANTI_EPS { k1r = -k1r; }
+    if k2r.dot(k1r) < 0.0 && k2r.dot(k1r) > ANTI_EPS { k2r = -k2r; }
+    if k3r.dot(k2r) < 0.0 && k3r.dot(k2r) > ANTI_EPS { k3r = -k3r; }
 
     // Determine the blending factor between k1 and k2 from t.
     let u = if k2.time > k1.time {
@@ -97,6 +112,14 @@ fn interpolate_frame(frames: &[Keyframe], t: f32) -> PlaybackFrame {
     } else {
         0.0
     };
+
+    let a = squad_tangent(k0r, k1r, k2r);
+    let b = squad_tangent(k1r, k2r, k3r);
+    let rotation = squad(k1r, k2r, a, b, u).normalize();
+
+    // let s1 = slerp_stable(k0r, k1r, u);
+    // let s2 = slerp_stable(a, b, u);
+    // let rotation = slerp_stable(s1, s2, 2.0 * u (1.0 - u)).normalize();
 
     // u = u*u*(3.0 - 2.0 * u);
 
@@ -114,10 +137,6 @@ fn interpolate_frame(frames: &[Keyframe], t: f32) -> PlaybackFrame {
 
     // let rotation = squad_with_neighbors(k0r, k1r, k2r, k3r, u, dt0, dt1, dt2); 
     let fov = catmull_rom_centripetal_scalar(k0.fov, k1.fov, k2.fov, k3.fov, u); 
-
-    let a = squad_tangent(k0r, k1r, k2r);
-    let b = squad_tangent(k1r, k2r, k3r);
-    let rotation = squad(k1r, k2r, a, b, u).normalize();
 
     PlaybackFrame {
         translation,
@@ -177,6 +196,27 @@ fn pos_tcb_hermite(
     let h11 =      u3 -     u2;
 
     h00 * p1 + h10 * (m1_out * h) + h01 * p2 + h11 * (m2_in * h)
+}
+
+fn slerp_stable(q_from: Quat, q_to: Quat, t: f32) -> Quat {
+    let qf = q_from.normalize();
+    let qt = q_to.normalize();
+
+    let delta = qf.conjugate() * qt;
+    let v = delta.xyz();
+    let w = delta.w;
+
+    // Angle in [0, PI]
+    let v_len = v.length();
+    let angle = 2.0 * v_len.atan2(w);
+
+    if angle < 1e-6 {
+        return (qf * (1.0 - t) + qt * t).normalize();
+    }
+
+    let axis = if v_len > 1e-8 { v / v_len } else { Vec3::X };
+
+    qf * Quat::from_axis_angle(axis, angle * t)
 }
 
 fn find_segment(frames: &[Keyframe], t: f32) -> (usize, usize) {

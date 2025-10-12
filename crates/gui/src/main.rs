@@ -16,12 +16,12 @@ fn main() -> eframe::Result<()> {
     };
 
     eframe::run_native(
-        "Nightreign Camera Tool Thing",
+        &format!("Freecum+ v{}", env!("CARGO_PKG_VERSION")),
         options,
         Box::new(|_cc| Ok(Box::new(CameraControlApp::default()))),
     )
 }
 
 pub(crate) fn program_title() -> String {
-    format!("Freecam+ v{}", env!("CARGO_PKG_VERSION"))
+    format!("Freecum+ v{}", env!("CARGO_PKG_VERSION"))
 }

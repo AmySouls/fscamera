@@ -3,7 +3,7 @@ use crate::process::{self, GameProcess, RemoteGame};
 use crate::program_title;
 use crate::save::{prompt_and_load_keyframes, prompt_and_save_keyframes};
 use crate::settings::{get_settings, save_settings};
-use eframe::egui::{self, CentralPanel, ComboBox, DragValue, Key, Slider, TopBottomPanel};
+use eframe::egui::{self, Align2, CentralPanel, ComboBox, DragValue, FontId, Key, Slider, TopBottomPanel};
 use egui::{Color32, Pos2, Rect, Sense, Vec2};
 use egui_notify::Toasts;
 use protocol::keyframe::{Keyframe, Quat, Vec3};
@@ -100,21 +100,21 @@ impl eframe::App for CameraControlApp {
             // Need this here to re-request for poll_events as well as timeline visual updates.
             ctx.request_repaint();
 
-            // if let Ok(events) = remote.poll_events() {
-            //     for event in events {
-            //         match event {
-            //             OutboundGameControlEvent::KeybindAction(action) => {
-            //                 self.handle_keybind_action(&action)
-            //             }
-            //         }
-            //     }
-            // } else {
-            //     self.notify.error(
-            //         "Could not poll events from remote. Reattach to game please.".to_string(),
-            //     );
-            //     self.remote = None;
-            //     self.playing = false;
-            // }
+            if let Ok(events) = remote.poll_events() {
+                for event in events {
+                    match event {
+                        OutboundGameControlEvent::KeybindAction(action) => {
+                            self.handle_keybind_action(&action)
+                        }
+                    }
+                }
+            } else {
+                self.notify.error(
+                    "Could not poll events from remote. Reattach to game please.".to_string(),
+                );
+                self.remote = None;
+                self.playing = false;
+            }
         }
 
         self.notify.show(ctx);
@@ -714,13 +714,15 @@ impl CameraControlApp {
                     (1.0, Color32::WHITE),
                 );
 
-                painter.text(
-                    Pos2::new(x + 2.0, timeline_top + 12.0),
-                    egui::Align2::LEFT_TOP,
-                    format!("{second}s"),
-                    egui::FontId::monospace(10.0),
-                    Color32::WHITE,
-                );
+                if second % 5 == 0 {
+                    painter.text(
+                        Pos2::new(x + 2.0, timeline_top + 12.0),
+                        Align2::LEFT_TOP,
+                        format!("0:{second:#02}"),
+                        FontId::monospace(10.0),
+                        Color32::WHITE,
+                    );
+                }
             }
 
             // Draw keyframes as vertical markers
@@ -769,9 +771,9 @@ impl CameraControlApp {
 
             painter.text(
                 Pos2::new(playhead_x + 4.0, playhead_top),
-                egui::Align2::LEFT_TOP,
-                format!("{:.2}s", self.playback_time),
-                egui::FontId::monospace(12.0),
+                Align2::LEFT_TOP,
+                format!("{:2.2}", self.playback_time),
+                FontId::monospace(12.0),
                 Color32::RED,
             );
 
