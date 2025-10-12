@@ -2,6 +2,7 @@ use crate::{Camera, Space};
 use protocol::keyframe::Keyframe;
 use glam::{Vec3, Quat};
 
+/// Camera that can play a path made up of keyframes by smoothly interpolating between them.
 pub struct PlaybackCam {
     pub camera: Camera,
     /// Is the path currently playing?
@@ -24,7 +25,11 @@ impl PlaybackCam {
 
     pub fn set_keyframes(&mut self, mut keyframes: Vec<Keyframe>) {
         keyframes.sort_by(|a, b| a.time.total_cmp(&b.time));
+
+        // For (s)lerping to work properly we need to ensure that all quats are have their
+        // directional vector on the same hemisphere.
         fix_quaternion_hemispheres(keyframes.as_mut_slice());
+
         self.keyframes = keyframes;
     }
 
@@ -37,13 +42,14 @@ impl PlaybackCam {
             self.time += delta;
         }
 
-        // TODO: interpolation code updating the camera
         let frame = interpolate_frame(&self.keyframes, self.time);
         self.camera.translation = frame.translation;
         self.camera.rotation = frame.rotation;
+        self.camera.fov = frame.fov;
     }
 }
 
+/// Intermediate state of the camera produced by interpolating between the keyframes. 
 #[derive(Default)]
 pub struct PlaybackFrame {
     pub translation: Vec3,
@@ -51,7 +57,7 @@ pub struct PlaybackFrame {
     pub fov: f32,
 }
 
-pub fn interpolate_frame(frames: &[Keyframe], t: f32) -> PlaybackFrame {
+fn interpolate_frame(frames: &[Keyframe], t: f32) -> PlaybackFrame {
     // If there is only a single frame keep it in place on that one frame.
     if frames.len() == 1 && let Some(f) = frames.first() {
         let protocol::keyframe::Vec3 { x, y, z } = f.position;
@@ -64,8 +70,8 @@ pub fn interpolate_frame(frames: &[Keyframe], t: f32) -> PlaybackFrame {
         }
     }
 
-    // Find the segment containing t
     let (i1, i2) = find_segment(frames, t);
+
     // Retrieve neighbor indices and duplicate ends when missing.
     let i0 = i1.saturating_sub(1);
     let i3 = (i2 + 1).min(frames.len() - 1);
@@ -85,22 +91,33 @@ pub fn interpolate_frame(frames: &[Keyframe], t: f32) -> PlaybackFrame {
     let k2r = Quat::from_xyzw(k2.orientation.0, k2.orientation.1, k2.orientation.2, k2.orientation.3);
     let k3r = Quat::from_xyzw(k3.orientation.0, k3.orientation.1, k3.orientation.2, k3.orientation.3);
 
-    let dt0 = (k1.time - k0.time).max(1e-6);
-    let dt1 = (k2.time - k1.time).max(1e-6);
-    let dt2 = (k3.time - k2.time).max(1e-6);
-
     // Determine the blending factor between k1 and k2 from t.
-    let mut u = if k2.time > k1.time {
+    let u = if k2.time > k1.time {
         ((t - k1.time) / (k2.time - k1.time)).clamp(0.0, 1.0)
     } else {
         0.0
     };
 
-    u = u*u*(3.0 - 2.0 * u);
+    // u = u*u*(3.0 - 2.0 * u);
 
-    let translation = catmull_rom_centripetal_vec3(k0t, k1t, k2t, k3t, u); 
-    let rotation = squad_with_neighbors(k0r, k1r, k2r, k3r, u, dt0, dt1, dt2); 
+    // let translation = catmull_rom_centripetal_vec3(k0t, k1t, k2t, k3t, u); 
+    let translation = pos_tcb_hermite(
+        k0t, k0.time,
+        k1t, k1.time,
+        k2t, k2.time,
+        k3t, k3.time,
+        u,
+        0.0,
+        0.0,
+        0.3,
+    ); 
+
+    // let rotation = squad_with_neighbors(k0r, k1r, k2r, k3r, u, dt0, dt1, dt2); 
     let fov = catmull_rom_centripetal_scalar(k0.fov, k1.fov, k2.fov, k3.fov, u); 
+
+    let a = squad_tangent(k0r, k1r, k2r);
+    let b = squad_tangent(k1r, k2r, k3r);
+    let rotation = squad(k1r, k2r, a, b, u).normalize();
 
     PlaybackFrame {
         translation,
@@ -109,9 +126,63 @@ pub fn interpolate_frame(frames: &[Keyframe], t: f32) -> PlaybackFrame {
     }
 }
 
+/// Interpolate position on the span [k1, k2] with Kochanek–Bartels (TCB) Hermite.
+/// T in [0,1]  : 0 = loose (Catmull-Rom-like), 1 = straight lines (no curvature)
+/// C in [-1,1] : -1 = more corner, +1 = smoother join
+/// B in [-1,1] : -1 = favor incoming, +1 = favor outgoing (set ~0.2–0.4 to *preserve momentum*)
+fn pos_tcb_hermite(
+    p0: Vec3, t0: f32,
+    p1: Vec3, t1: f32,
+    p2: Vec3, t2: f32,
+    p3: Vec3, t3: f32,
+    u: f32,               // normalized local time in [0,1] over [t1, t2]
+    tension: f32,         // T
+    continuity: f32,      // C
+    bias: f32,            // B
+) -> Vec3 {
+    let eps = 1e-6;
+    let dt0 = (t1 - t0).max(eps);
+    let dt1 = (t2 - t1).max(eps);
+    let dt2 = (t3 - t2).max(eps);
+
+    // Finite differences with real time (non-uniform-friendly)
+    let d1 = (p1 - p0) / dt0;
+    let d2 = (p2 - p1) / dt1;
+    let d3 = (p3 - p2) / dt2;
+
+    let t = tension.clamp(0.0, 1.0);
+    let c = continuity.clamp(-1.0, 1.0);
+    let b = bias.clamp(-1.0, 1.0);
+
+    // Incoming/outgoing tangents at p1 and p2 (Kochanek–Bartels)
+    // See: Kochanek & Bartels 1984; also used in many DCC tools.
+    let m1_out = (1.0 - t) * (
+        (1.0 - c) * (1.0 + b) * 0.5 * d1 +
+        (1.0 + c) * (1.0 - b) * 0.5 * d2
+    );
+    let m2_in  = (1.0 - t) * (
+        (1.0 + c) * (1.0 + b) * 0.5 * d2 +
+        (1.0 - c) * (1.0 - b) * 0.5 * d3
+    );
+
+    // Cubic Hermite basis (u in [0,1]); scale tangents by real span length
+    let h = dt1;
+
+    let u2 = u * u;
+    let u3 = u2 * u;
+
+    let h00 =  2.0*u3 - 3.0*u2 + 1.0;
+    let h10 =      u3 - 2.0*u2 + u;
+    let h01 = -2.0*u3 + 3.0*u2;
+    let h11 =      u3 -     u2;
+
+    h00 * p1 + h10 * (m1_out * h) + h01 * p2 + h11 * (m2_in * h)
+}
+
 fn find_segment(frames: &[Keyframe], t: f32) -> (usize, usize) {
     // If t is before the first keyframe, use the first two.
     if t <= frames[0].time { return (0, 1); }
+
     // If t is part the last keyframe, use the last two.
     if t >= frames[frames.len() - 1].time { return (frames.len() - 2, frames.len() -1); }
 
@@ -128,6 +199,7 @@ fn find_segment(frames: &[Keyframe], t: f32) -> (usize, usize) {
 
 fn catmull_rom_centripetal_vec3(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, u01: f32) -> Vec3 {
     let (t0, t1, t2, t3) = chord_params_vec3(p0, p1, p2, p3);
+
     // Map u in [0,1] to the inner interval [t1, t2]
     let t = lerp_f32(t1, t2, u01);
     let a1 = lerp_vec3(p0, p1, (t - t0) / (t1 - t0).max(1e-6));
@@ -182,65 +254,43 @@ fn lerp_f32(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
 }
 
-fn squad_with_neighbors(
-    q0: Quat,
-    q1: Quat,
-    q2: Quat,
-    q3: Quat,
-    u: f32,
-    dt0: f32,
-    dt1: f32,
-    dt2: f32,
-) -> Quat {
-    // dt0 = t1 - t0, dt1 = t2 - t1, dt2 = t3 - t2  (clamped to small eps > 0)
-    let q0 = q0.normalize();
-    let q1 = q1.normalize();
-    let q2 = q2.normalize();
-    let q3 = q3.normalize();
-
-    let s1 = squad_control_weighted(q0, q1, q2, dt0, dt1);
-    let s2 = squad_control_weighted(q1, q2, q3, dt1, dt2);
-
-    // Standard SQUAD blend (Shoemake)
-    let q12 = q1.slerp(q2, u);
-    let s12 = s1.slerp(s2, u);
-    q12.slerp(s12, 2.0 * u * (1.0 - u)).normalize()
+fn squad_tangent(q0: Quat, q1: Quat, q2: Quat) -> Quat {
+    let inv_q1 = q1.conjugate();
+    let l1 = quat_log(inv_q1 * q0);
+    let l2 = quat_log(inv_q1 * q2);
+    q1 * quat_exp((l1 + l2) * (-0.25))
 }
 
-// Time-weighted tangent (Grassia/Shoemake style)
-fn squad_control_weighted(q_prev: Quat, q_curr: Quat, q_next: Quat, dt_prev: f32, dt_next: f32) -> Quat {
-    let eps = 1e-6;
-    let dtp = dt_prev.max(eps);
-    let dtn = dt_next.max(eps);
-    let w_prev = dtn / (dtp + dtn); // more weight to the farther side
-    let w_next = dtp / (dtp + dtn);
-
-    // s_i = q_i * exp(-0.5 * ( w_next*log(q_i^{-1} q_{i+1}) + w_prev*log(q_i^{-1} q_{i-1}) ) / 2)
-    // The -0.25 factor is the usual unweighted form; here we keep the same scale with weights.
-    let inv = q_curr.conjugate();
-    let a = quat_log(inv * q_next);
-    let b = quat_log(inv * q_prev);
-    q_curr * quat_exp( (a * w_next + b * w_prev) * (-0.25) )
+fn squad(q1: Quat, q2: Quat, a: Quat, b: Quat, u: f32) -> Quat {
+    let s1 = q1.slerp(q2, u);
+    let s2 = a.slerp(b, u);
+    s1.slerp(s2, 2.0 * u * (1.0 - u))
 }
 
-fn quat_log(q: Quat) -> Vec3 {
+fn quat_log(q: Quat) -> glam::Vec3 {
+    let v = q.xyz();
     let w = q.w;
-    let v = Vec3::new(q.x, q.y, q.z);
     let v_len = v.length();
-    let eps = 1e-8;
-    if v_len < eps { Vec3::ZERO } else { v * (w.acos() / v_len) }
-}
-
-fn quat_exp(v: Vec3) -> Quat {
-    let t = v.length();
-    if t < 1e-8 { Quat::from_xyzw(v.x, v.y, v.z, 1.0).normalize() }
-    else {
-        let s = t.sin() / t;
-        Quat::from_xyzw(v.x * s, v.y * s, v.z * s, t.cos()).normalize()
+    if v_len < 1e-8 {
+        glam::Vec3::ZERO
+    } else {
+        let angle = v_len.atan2(w);
+        v * (angle / v_len)
     }
 }
 
-pub fn fix_quaternion_hemispheres(frames: &mut [Keyframe]) {
+fn quat_exp(v: glam::Vec3) -> Quat {
+    let theta = v.length();
+    if theta < 1e-8 {
+        Quat::from_xyzw(v.x, v.y, v.z, 1.0).normalize()
+    } else {
+        let s = theta.sin() / theta;
+        Quat::from_xyzw(v.x * s, v.y * s, v.z * s, theta.cos()).normalize()
+    }
+}
+
+/// Ensure all quats are on the same hemisphere otherwise we run into an ouchie when lerping
+fn fix_quaternion_hemispheres(frames: &mut [Keyframe]) {
     if frames.is_empty() { return; }
     for i in 1..frames.len() {
         let a = Quat::from_xyzw(

@@ -52,7 +52,6 @@ use crate::keybind::Keybinds;
 mod fov;
 mod game;
 mod input;
-mod keyframe;
 mod player;
 mod keybind;
 

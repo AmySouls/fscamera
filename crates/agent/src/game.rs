@@ -88,6 +88,12 @@ static GAME_OFFSETS: LazyLock<Result<GameOffsets, RemoteError>> = LazyLock::new(
             scaleform_update_b: 0xe71e50,
             no_dead_flag: 0x3b9ab24,
         },
+        ("ELDEN RING NIGHTREIGN", "1.2.4.0") => GameOffsets {
+            move_map_step: 0xbf0260,
+            field_area: 0x3b9dc10,
+            scaleform_update_b: 0x56be3af,
+            no_dead_flag: 0x3b9ab24,
+        },
         _ => return Err(RemoteError::UnknownGame),
     })
 });
