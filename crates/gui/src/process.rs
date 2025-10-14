@@ -8,6 +8,7 @@ const SUPPORTED_GAMES: &[&str] = &[
     // "eldenring.exe",
     // "armoredcore6.exe",
     // "sekiro.exe",
+    "eldenring.exe",
     "nightreign.exe",
     "start_protected_game.exe",
 ];

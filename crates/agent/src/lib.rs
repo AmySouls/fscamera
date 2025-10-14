@@ -11,6 +11,7 @@ use camera::Camera;
 use camera::Space;
 use crossbeam::queue::SegQueue;
 use eldenring::cs::CSPersCam;
+use eldenring::cs::CSCam;
 use eldenring::cs::CSTaskGroupIndex;
 use eldenring::cs::CSTaskImp;
 use eldenring::fd4::FD4TaskData;

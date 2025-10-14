@@ -141,7 +141,7 @@ dependencies = [
  "log",
  "log-panics",
  "log4rs",
- "pelite",
+ "pelite 0.10.0 (git+https://github.com/lifegpc/pelite.git)",
  "protocol",
  "retour",
  "thiserror 1.0.69",
@@ -1266,7 +1266,7 @@ dependencies = [
  "fromsoftware-shared",
  "nalgebra",
  "nalgebra-glm",
- "pelite",
+ "pelite 0.10.0 (git+https://github.com/lifegpc/pelite.git)",
  "regex",
  "serde",
  "serde_derive",
@@ -1282,7 +1282,7 @@ version = "0.11.0"
 dependencies = [
  "eldenring",
  "fromsoftware-shared",
- "pelite",
+ "pelite 0.10.0 (git+https://github.com/lifegpc/pelite.git)",
  "steamworks",
  "steamworks-sys",
  "thiserror 1.0.69",
@@ -1509,7 +1509,7 @@ version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39817769d3f0ec454107f15c8d65e34b77e183b401c9f76bd46329528c7b82bc"
 dependencies = [
- "pelite",
+ "pelite 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex",
  "windows 0.61.3",
 ]
@@ -1522,7 +1522,7 @@ dependencies = [
  "fromsoftware-shared-macros",
  "nalgebra",
  "nalgebra-glm",
- "pelite",
+ "pelite 0.10.0 (git+https://github.com/lifegpc/pelite.git)",
  "undname",
  "windows 0.54.0",
 ]
@@ -3081,9 +3081,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88dccf4bd32294364aeb7bd55d749604450e9db54605887551f21baea7617685"
 dependencies = [
  "dataview",
+ "no-std-compat",
+ "pelite-macros 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "pelite"
+version = "0.10.0"
+source = "git+https://github.com/lifegpc/pelite.git#d4fad2a01a9a1a71e36f10f312112bd9b63c9a3d"
+dependencies = [
+ "dataview",
  "libc",
  "no-std-compat",
- "pelite-macros",
+ "pelite-macros 0.1.1 (git+https://github.com/lifegpc/pelite.git)",
  "winapi",
 ]
 
@@ -3092,6 +3102,11 @@ name = "pelite-macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a7cf3f8ecebb0f4895f4892a8be0a0dc81b498f9d56735cb769dc31bf00815b"
+
+[[package]]
+name = "pelite-macros"
+version = "0.1.1"
+source = "git+https://github.com/lifegpc/pelite.git#d4fad2a01a9a1a71e36f10f312112bd9b63c9a3d"
 
 [[package]]
 name = "percent-encoding"

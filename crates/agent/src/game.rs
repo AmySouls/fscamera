@@ -94,6 +94,12 @@ static GAME_OFFSETS: LazyLock<Result<GameOffsets, RemoteError>> = LazyLock::new(
             scaleform_update_b: 0x56be3af,
             no_dead_flag: 0x3b9ab24,
         },
+        ("ELDEN RING™", "2.6.1.0") => GameOffsets {
+            move_map_step: 0xaf7de0,
+            field_area: 0x3d691d8,
+            scaleform_update_b: 0xd6e7a0,
+            no_dead_flag: 0x3d661a0,
+        },
         _ => return Err(RemoteError::UnknownGame),
     })
 });
@@ -151,6 +157,7 @@ pub fn block_coords_to_physics_coords(
 /// Source of name: RTTI
 #[fromsoft_shared::singleton("CSCamera")]
 pub struct CSCamera {
+    pub unk0: [u8; 0x8],
     pub pers_cam_1: OwnedPtr<CSPersCam>,
     pub pers_cam_2: OwnedPtr<CSPersCam>,
     pub pers_cam_3: OwnedPtr<CSPersCam>,
@@ -171,7 +178,7 @@ pub struct CSCamera {
 #[repr(C)]
 #[fromsoft_shared::singleton("CSFlipper")]
 pub struct CSFlipperImp {
-    unk0: [u8; 0x2D4],
+    unk0: [u8; 0x2CC],
     pub time_multiplier: f32,
 }
 
@@ -186,7 +193,7 @@ pub struct WorldAreaTime {
 
 #[repr(C)]
 pub struct MoveMapStep {
-    unk0: [u8; 0xF8],
+    unk0: [u8; 0xF0],
     pub field_area: OwnedPtr<FieldArea>,
     unk100: [u8; 0x30],
     pub debug_pause: bool,
@@ -194,8 +201,9 @@ pub struct MoveMapStep {
 
 #[repr(C)]
 pub struct FieldArea {
-    unk0: [u8; 0x18],
+    unk0: [u8; 0x10],
     pub world_info_owner: OwnedPtr<WorldInfoOwner>,
+    pub world_info_owner2: OwnedPtr<WorldInfoOwner>,
     pub game_rend: OwnedPtr<GameRend>,
     unk28: u32,
     pub map_id: MapId,
@@ -213,7 +221,7 @@ pub enum FreecamMode {
 
 #[repr(C)]
 pub struct GameRend {
-    unk0: [u8; 0xa4],
+    unk0: [u8; 0xc8],
     // 0 = inactive, 1 = active and paused, 2 = active and running world, 3 = stationary
     pub freecam_mode: FreecamMode,
 }
@@ -235,7 +243,7 @@ pub struct WorldInfoOwner {
     pub world_area_info_all_count: u32,
     _pad2c: u32,
     /// Combined list of pointers to all overworld and dungeon world area infos.
-    pub world_area_info_all: [Option<NonNull<WorldAreaInfoBase>>; 30],
+    pub world_area_info_all: [Option<NonNull<WorldAreaInfoBase>>; 34],
     /// Count of block infos.
     pub world_block_info_count: u32,
     _pad3c: u32,
@@ -244,8 +252,8 @@ pub struct WorldInfoOwner {
     unk130: u32,
     unk134: u32,
     unk138: u64,
-    _world_area_info: [WorldAreaInfo; 20],
-    _world_block_info: [WorldBlockInfo; 128],
+    _world_area_info: [WorldAreaInfo; 28],
+    _world_block_info: [WorldBlockInfo; 192],
     _world_grid_area_info: [WorldGridAreaInfo; 6],
     // TODO: Add resource stuff
 }
@@ -267,6 +275,7 @@ impl WorldInfoOwner {
         let mut block_id = *block_id;
 
         // Figure out overworld map ID to prevent storing data reliant on randomized features.
+        /* Nightreign exclusive
         if block_id.is_small_base_map() {
             // Figure out what grid area info stores the small bases
             let world_area_info = self
@@ -280,6 +289,7 @@ impl WorldInfoOwner {
                 }
             }
         }
+        */
 
         match block_id.is_overworld() {
             true => self
@@ -342,8 +352,8 @@ pub struct WorldGridAreaInfo {
     pub blocks: Tree<WorldGridAreaInfoBlockElement>,
     unka0: Tree<()>,
     unkb8: u64,
-    unkc0: u64,
-    pub small_bases: Tree<WorldGridAreaInfoSmallBaseBlockElement>,
+    unkc0: Tree<()>,
+    unkd8: u64,
 }
 
 #[repr(C)]
@@ -353,23 +363,15 @@ pub struct WorldGridAreaInfoBlockElement {
     pub block: OwnedPtr<WorldBlockInfo>,
 }
 
-#[repr(C)]
-pub struct WorldGridAreaInfoSmallBaseBlockElement {
-    pub map_id: MapId,
-    _pad4: u32,
-    // TODO: Might be a struct here instead of a pointer pointer.
-    pub block: OwnedPtr<OwnedPtr<WorldBlockInfo>>,
-}
-
 // Source of name: RTTI
 #[repr(C)]
 pub struct WorldBlockInfo {
     vtable: usize,
     pub map_id: MapId,
     unkc: [u8; 0x28],
-    pub small_base_block_id: MapId,
-    pub small_base_parent_block_id: MapId,
-    unk3c: [u8; 0x44],
+    block_id_2: MapId,
+    pub world_area_info_index: i32,
+    unk3c: [u8; 0x34],
     pub physics_center: HavokPosition,
     unk90: [u8; 0x60],
 }
@@ -441,7 +443,7 @@ impl Display for MapId {
 #[repr(C)]
 #[fromsoft_shared::singleton("WorldChrMan")]
 pub struct WorldChrMan {
-    unk0: [u8; 0x174e8],
+    unk0: [u8; 0x1E508],
     pub main_player: Option<OwnedPtr<ChrIns>>,
 }
 
@@ -451,9 +453,9 @@ pub struct ChrIns {
     // Both of these seemingly switch between some variation map ID and overworld ID?
     pub current_map_id: MapId,
     pub previous_map_id: MapId,
-    unk40: [u8; 0x20],
+    unk40: [u8; 0x18],
     pub chr_ctrl: OwnedPtr<ChrCtrl>,
-    unk68: [u8; 0x150],
+    unk68: [u8; 0x130],
     pub modules: OwnedPtr<ChrModules>,
 }
 
@@ -470,6 +472,6 @@ pub struct ChrModules {
 
 #[repr(C)]
 pub struct ChrDataModule {
-    unk0: [u8; 0x189],
+    unk0: [u8; 0x19B],
     pub no_dead: bool,
 }
