@@ -24,12 +24,12 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn new(space: Space, translation: Vec3, orientation: Quat) -> Self {
+    pub fn new(space: Space, translation: Vec3, rotation: Quat, fov: f32) -> Self {
         Self {
             space,
             translation,
-            rotation: orientation,
-            fov: 48.0f32.to_radians(),
+            rotation,
+            fov,
         }
     }
 }

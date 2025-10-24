@@ -5,7 +5,7 @@ pub struct FreeCamInput {
     pub forward: f32,
     pub right: f32,
     pub up: f32,
-    pub speed_multiplier: f32,
+    pub speed_modifier: f32,
     pub mouse_delta: Vec2,
     pub roll_delta: f32,
 }
@@ -16,7 +16,7 @@ impl Default for FreeCamInput {
             forward: 0.0,
             right: 0.0,
             up: 0.0,
-            speed_multiplier: 1.0,
+            speed_modifier: 1.0,
             mouse_delta: Vec2::ZERO,
             roll_delta: 0.0,
         }
@@ -26,6 +26,8 @@ impl Default for FreeCamInput {
 /// Freecam meant for looking around and setting up paths.
 pub struct FreeCam {
     pub camera: Camera,
+    /// Is the freecam locked in terms of movement?
+    pub locked: bool,
     pub target_translation: Vec3,
     /// Level rotation as to now have yaw and pitch deltas be contaminated by roll.
     pub level_rotation: Quat,
@@ -36,12 +38,17 @@ pub struct FreeCam {
     /// Target roll rotation to interpolate to.
     pub target_roll_angle: f32,
 
+    // Base movement speed.
     pub movement_speed: f32,
+    /// Base rotational speed.
     pub rotation_speed: f32,
+    /// Base roll speed.
     pub roll_speed: f32,
-    pub movement_speed_multiplier: f32,
-    pub rotation_speed_multiplier: f32,
-    pub roll_speed_multiplier: f32,
+    /// Modifier for the movement speed, used when holding accel button.
+    pub movement_speed_modifier: f32,
+    pub rotation_speed_modifier: f32,
+    pub roll_speed_modifier: f32,
+    pub fov_change_rate: f32,
 
     translation_smooth_time: f32,
     orientation_smooth_time: f32,
@@ -49,24 +56,22 @@ pub struct FreeCam {
 }
 
 impl FreeCam {
-    pub fn from(space: Space, translation: Vec3, orientation: Quat) -> Self {
+    pub fn new(space: Space, translation: Vec3, orientation: Quat, fov: f32) -> Self {
         Self {
-            camera: Camera::new(space, translation, orientation),
+            camera: Camera::new(space, translation, orientation, fov),
+            locked: false,
             target_translation: translation,
-
             level_rotation: orientation,
             target_level_rotation: orientation,
             roll_angle: 0.0,
             target_roll_angle: 0.0,
-
             movement_speed: 6.0,
             rotation_speed: 0.002,
             roll_speed: 2.0,
-
-            movement_speed_multiplier: 1.0,
-            rotation_speed_multiplier: 1.0,
-            roll_speed_multiplier: 1.0,
-
+            movement_speed_modifier: 1.0,
+            rotation_speed_modifier: 1.0,
+            roll_speed_modifier: 1.0,
+            fov_change_rate: 1.0f32.to_radians(),
             translation_smooth_time: 0.10,
             orientation_smooth_time: 0.12,
             roll_smooth_time: 0.10,
@@ -97,28 +102,31 @@ impl FreeCam {
     }
 
     pub fn update(&mut self, input: &FreeCamInput, delta: f32) {
-        if input.mouse_delta != Vec2::ZERO {
-            let dx = input.mouse_delta.x * self.rotation_speed * self.rotation_speed_multiplier;
-            let dy = input.mouse_delta.y * self.rotation_speed * self.rotation_speed_multiplier;
+        if !self.locked {
+            if input.mouse_delta != Vec2::ZERO {
+                let dx = input.mouse_delta.x * self.rotation_speed * self.rotation_speed_modifier;
+                let dy = input.mouse_delta.y * self.rotation_speed * self.rotation_speed_modifier;
 
-            let q_yaw = Quat::from_axis_angle(self.camera.space.up, dx);
-            self.target_level_rotation = (q_yaw * self.target_level_rotation).normalize();
+                let q_yaw = Quat::from_axis_angle(self.camera.space.up, dx);
+                self.target_level_rotation = (q_yaw * self.target_level_rotation).normalize();
 
-            let right =
-                (Mat3::from_quat(self.target_level_rotation) * self.camera.space.right).normalize();
-            let q_pitch = Quat::from_axis_angle(right, dy);
-            self.target_level_rotation = (q_pitch * self.target_level_rotation).normalize();
-        }
+                let right =
+                    (Mat3::from_quat(self.target_level_rotation) * self.camera.space.right).normalize();
+                let q_pitch = Quat::from_axis_angle(right, dy);
+                self.target_level_rotation = (q_pitch * self.target_level_rotation).normalize();
+            }
 
-        if input.roll_delta != 0.0 {
-            self.target_roll_angle += input.roll_delta * self.roll_speed * delta;
+            if input.roll_delta != 0.0 {
+                self.target_roll_angle += input.roll_delta * self.roll_speed * delta;
+            }
         }
 
         // Blend orientation towards targets
         let a_orientation = Self::exp_alpha(delta, self.orientation_smooth_time);
-        self.level_rotation = self.level_rotation
-                .slerp(self.target_level_rotation, a_orientation)
-                .normalize();
+        self.level_rotation = self
+            .level_rotation
+            .slerp(self.target_level_rotation, a_orientation)
+            .normalize();
 
         // self.level_rotation = Self::relevel(
         //     self.level_rotation
@@ -150,7 +158,7 @@ impl FreeCam {
             velocity = velocity.normalize();
         }
 
-        let speed = self.movement_speed * self.movement_speed_multiplier * input.speed_multiplier;
+        let speed = self.movement_speed * self.movement_speed_modifier * input.speed_modifier;
         self.target_translation += velocity * speed * delta;
 
         let a_translation = Self::exp_alpha(delta, self.translation_smooth_time);

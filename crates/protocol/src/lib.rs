@@ -2,9 +2,12 @@ use keyframe::{Keyframe, Quat, Vec3};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub mod keyframe;
+use crate::keybind::KeybindMapping;
 
-#[derive(PartialEq)]
+pub mod keyframe;
+pub mod keybind;
+
+#[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum CameraMode {
     /// Game is in full control of the camera.
     Game,
@@ -18,27 +21,47 @@ pub enum CameraMode {
 pub enum InboundGameControlEvent {
     Initialize { settings: SettingsData },
     Settings { settings: SettingsData },
-    Keyframes { keyframes: Vec<Keyframe> },
-    Play { time: f32, keyframes: Vec<Keyframe> },
-    Pause { time: f32 },
-    Scrub { time: f32 },
-
-    PlaybackModeState { state: bool },
-    TimeMultiplier { multiplier: f32 },
-    GlobalFov { fov: f32, enabled: bool },
-    SetTimeOfDay { hours: u8, minutes: u8, seconds: u8 },
-    SetHudDisabled { disabled: bool },
-    SetCharacterNoDead { value: bool },
-    SetCharacterNoMove { value: bool },
     SetFreecamMovementSpeed { value: f32 },
     SetFreecamRotationSpeed { value: f32 },
-    SetDebugPause { enabled: bool },
-    SetFreecamEnabled { enabled: bool },
+
+    SetCameraMode { mode: CameraMode },
+    SetFreecamLocked { locked: bool },
+
+    SetFreecamFov { fov: f32 },
+    SetHudDisabled { disabled: bool },
+    SetDebugPauseEnabled { enabled: bool },
+
+    SetTimeOfDay { hours: u8, minutes: u8, seconds: u8 },
+    SetCharacterNoDead { enabled: bool },
+    SetCharacterNoMove { enabled: bool },
+    SetGameSpeedMultiplier { value: f32 },
+    SetGameSpeedMultiplierEnabled { enabled: bool },
+
+    SetKeyframes { keyframes: Vec<Keyframe> },
+    SetPlaybackState { playing: bool, time: f32 },
+
+    // Play { time: f32, keyframes: Vec<Keyframe> },
+    // Pause { time: f32 },
+    // Scrub { time: f32 },
+    //
+    // PlaybackModeState { state: bool },
+    // TimeMultiplier { multiplier: f32 },
+    // GlobalFov { fov: f32, enabled: bool },
+    // SetHudDisabled { disabled: bool },
+    // SetDebugPause { enabled: bool },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum OutboundGameControlEvent {
-    KeybindAction(KeybindAction),
+    CreateKeyframe,
+    PlayPath,
+    ToggleFreecam,
+    ToggleFreecamLock,
+    ToggleHud,
+    ToggleDebugPause,
+    ToggleGameSpeed,
+    IncreaseFov,
+    DecreaseFov,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -73,77 +96,21 @@ pub enum RemoteError {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SettingsData {
-    pub apply_gamespeed_only_when_playback_mode_active: bool,
-    pub enabling_playback_disables_freecam: bool,
-    pub playback_start_restarts_path: bool,
-    pub keybinds: Vec<Keybind>,
+    // pub apply_gamespeed_only_when_playback_mode_active: bool,
+    // pub enabling_playback_disables_freecam: bool,
+    // pub playback_start_restarts_path: bool,
+
+    pub path_duration: f32,
+    pub time_between_created_keyframes: f32,
+    pub keybinds: KeybindMapping,
 }
 
 impl Default for SettingsData {
     fn default() -> Self {
         Self {
-            apply_gamespeed_only_when_playback_mode_active: Default::default(),
-            enabling_playback_disables_freecam: Default::default(),
-            playback_start_restarts_path: Default::default(),
-            keybinds: vec![
-                Keybind {
-                    action: KeybindAction::TogglePlaybackMode,
-                    active: true,
-                    input: Some(KeybindInput::Keyboard(0x73)), // F4
-                },
-                Keybind {
-                    action: KeybindAction::ToggleFreecam,
-                    active: true,
-                    input: Some(KeybindInput::Keyboard(0x78)), // F9
-                },
-            ],
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum KeybindInput {
-    Keyboard(i32),
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Keybind {
-    pub action: KeybindAction,
-    pub active: bool,
-    pub input: Option<KeybindInput>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum KeybindAction {
-    TogglePlaybackMode,
-    CreateKeyframe,
-    ToggleHUD,
-    ToggleCharacterNoDead,
-    ToggleCharacterNoMove,
-    ToggleFovOverride,
-    SetFov(f32),
-    AdjustFov(f32),
-    SetGameSpeed(f32),
-    AdjustGamespeed(f32),
-    ToggleDebugPause,
-    ToggleFreecam,
-}
-
-impl KeybindAction {
-    pub fn is_debounced(&self) -> bool {
-        match self {
-            KeybindAction::TogglePlaybackMode => true,
-            KeybindAction::CreateKeyframe => true,
-            KeybindAction::ToggleHUD => true,
-            KeybindAction::ToggleCharacterNoDead => true,
-            KeybindAction::ToggleCharacterNoMove => true,
-            KeybindAction::ToggleFovOverride => true,
-            KeybindAction::SetFov(_) => true,
-            KeybindAction::AdjustFov(_) => true,
-            KeybindAction::SetGameSpeed(_) => true,
-            KeybindAction::AdjustGamespeed(_) => true,
-            KeybindAction::ToggleDebugPause => true,
-            KeybindAction::ToggleFreecam => true,
+            path_duration: 90.0,
+            time_between_created_keyframes: 10.0,
+            keybinds: KeybindMapping::default(),
         }
     }
 }
@@ -151,5 +118,4 @@ impl KeybindAction {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SettingsDataKeybind {
     pub key: u32,
-    pub action: KeybindAction,
 }

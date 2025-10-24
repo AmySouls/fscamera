@@ -14,9 +14,9 @@ pub struct PlaybackCam {
 }
 
 impl PlaybackCam {
-    pub fn new(space: Space, translation: Vec3, orientation: Quat) -> Self {
+    pub fn new(space: Space, translation: Vec3, orientation: Quat, fov: f32) -> Self {
         Self {
-            camera: Camera::new(space, translation, orientation),
+            camera: Camera::new(space, translation, orientation, fov),
             playing: false,
             time: 0.0,
             keyframes: vec![],

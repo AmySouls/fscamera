@@ -1,4 +1,4 @@
-use eframe::egui::{DragValue, Response, Slider, Ui};
+use eframe::egui::{DragValue, Response, RichText, Slider, Ui};
 
 pub(crate) fn drag_angle(ui: &mut Ui, label: &str, radians: &mut f32) -> Response {
     let mut degrees = radians.to_degrees();
@@ -85,4 +85,27 @@ pub(crate) fn drag_percentage_delta(ui: &mut Ui, label: &str, multiple: &mut f32
     *multiple = (percentage / 100.0).clamp(-10.0, 10.0);
 
     response
+}
+
+#[inline]
+pub(crate) fn panel_header(ui: &mut Ui, label: &str) {
+    ui.label(
+        RichText::new(label)
+            .heading()
+            .size(16.0)
+    );
+    ui.separator();
+    ui.spacing();
+}
+
+#[inline]
+pub(crate) fn labeled_control<F>(ui: &mut Ui, label: &str, mut build: F)
+where
+    F: FnMut(&mut Ui) {
+
+    ui.vertical(|ui| {
+        ui.label(label);
+
+        build(ui);
+    });
 }
