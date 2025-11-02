@@ -67,8 +67,6 @@ impl WorldControl {
             });
         });
 
-        ui.spacing();
-
         ui.horizontal(|ui| {
             if ui
                 .checkbox(&mut self.character_no_dead, "Disable character death")
@@ -86,10 +84,6 @@ impl WorldControl {
                 notify.error(format!("Could not enable no move: {e}"));
             }
         });
-    }
-
-    pub fn set_gamespeed_multiplier(&mut self, value: f32) {
-        self.gamespeed_multiplier = value;
     }
 
     pub fn gamespeed_enabled(&self) -> bool {

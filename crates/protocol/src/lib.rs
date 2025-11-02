@@ -39,16 +39,6 @@ pub enum InboundGameControlEvent {
 
     SetKeyframes { keyframes: Vec<Keyframe> },
     SetPlaybackState { playing: bool, time: f32 },
-
-    // Play { time: f32, keyframes: Vec<Keyframe> },
-    // Pause { time: f32 },
-    // Scrub { time: f32 },
-    //
-    // PlaybackModeState { state: bool },
-    // TimeMultiplier { multiplier: f32 },
-    // GlobalFov { fov: f32, enabled: bool },
-    // SetHudDisabled { disabled: bool },
-    // SetDebugPause { enabled: bool },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -60,8 +50,8 @@ pub enum OutboundGameControlEvent {
     ToggleHud,
     ToggleDebugPause,
     ToggleGameSpeed,
-    IncreaseFov,
-    DecreaseFov,
+    SetCameraMode { mode: CameraMode },
+    UpdateFreecamFov { fov: f32 },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -94,13 +84,10 @@ pub enum RemoteError {
     AcquireWorldChrMan,
 }
 
+// TODO: alternative gamespeed for playback mode
+// TODO: turn off debug pause when playback mode starts
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SettingsData {
-    // pub apply_gamespeed_only_when_playback_mode_active: bool,
-    // pub enabling_playback_disables_freecam: bool,
-    // pub playback_start_restarts_path: bool,
-
-    pub path_duration: f32,
     pub time_between_created_keyframes: f32,
     pub keybinds: KeybindMapping,
 }
@@ -108,7 +95,6 @@ pub struct SettingsData {
 impl Default for SettingsData {
     fn default() -> Self {
         Self {
-            path_duration: 90.0,
             time_between_created_keyframes: 10.0,
             keybinds: KeybindMapping::default(),
         }

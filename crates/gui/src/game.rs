@@ -1,9 +1,9 @@
 use dll_syringe::{process::OwnedProcess, Syringe};
 use futures::channel::oneshot;
 use futures::{pin_mut, select, FutureExt};
-use protocol::keybind::KeybindMapping;
 use protocol::keyframe::Keyframe;
 use protocol::{CameraMode, CameraState, InboundGameControlEvent, OutboundGameControlEvent, RemoteError, SettingsData};
+use smol::Timer;
 use std::sync::mpsc;
 use std::{
     thread,
@@ -33,6 +33,7 @@ impl RemoteGame {
         // Oneshot channel indicating if the game process should be detached.
         let (poller_cancel_tx, poller_cancel_rx) = oneshot::channel::<()>();
 
+        // Use smol to pump events from game to GUI state
         let poller_thread = {
             let gp = gp.clone();
 
@@ -48,14 +49,12 @@ impl RemoteGame {
                         pin_mut!(shutdown);
 
                         loop {
-                            // Polling interval for remote game events
-                            let timeout = smol::Timer::after(Duration::from_millis(500)).fuse();
+                            let timeout = Timer::after(Duration::from_millis(500)).fuse();
 
                             pin_mut!(timeout);
 
                             select! {
                                 _ = shutdown => {
-                                    println!("Stopping channel");
                                     return;
                                 }
                                 _ = timeout => {
@@ -186,6 +185,10 @@ impl RemoteGame {
 
     pub fn set_playback_state(&self, playing: bool, time: f32) -> Result<(), RemoteError> {
         self.post_event(InboundGameControlEvent::SetPlaybackState { playing, time })
+    }
+
+    pub fn set_freecam_fov(&self, fov: f32) -> Result<(), RemoteError> {
+        self.post_event(InboundGameControlEvent::SetFreecamFov { fov })
     }
 
     fn post_event(&self, event: InboundGameControlEvent) -> Result<(), RemoteError> {

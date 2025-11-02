@@ -17,29 +17,30 @@ impl Default for KeybindMapping {
     fn default() -> Self {
         Self {
             // F10
-            create_keyframe: Some(KeybindInput::Keyboard(0x79)),
+            create_keyframe: Some(KeybindInput::KeyDown(0x79)),
             // F4
-            play_path: Some(KeybindInput::Keyboard(0x73)),
+            play_path: Some(KeybindInput::KeyDown(0x73)),
             // F9
-            toggle_freecam: Some(KeybindInput::Keyboard(0x78)),
+            toggle_freecam: Some(KeybindInput::KeyDown(0x78)),
             // F8
-            toggle_freecam_lock: Some(KeybindInput::Keyboard(0x77)),
+            toggle_freecam_lock: Some(KeybindInput::KeyDown(0x77)),
             // DEL
-            toggle_hud: Some(KeybindInput::Keyboard(0x2e)),
+            toggle_hud: Some(KeybindInput::KeyDown(0x2e)),
             // P
-            toggle_debug_pause: Some(KeybindInput::Keyboard(0x50)),
+            toggle_debug_pause: Some(KeybindInput::KeyDown(0x50)),
             // O
-            toggle_game_speed: Some(KeybindInput::Keyboard(0x4f)),
+            toggle_game_speed: Some(KeybindInput::KeyDown(0x4f)),
 
-            increase_fov: Some(KeybindInput::ScrollUp),
-            decrease_fov: Some(KeybindInput::ScrollDown),
+            increase_fov: Some(KeybindInput::ScrollDown),
+            decrease_fov: Some(KeybindInput::ScrollUp),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum KeybindInput {
-    Keyboard(i32),
+    KeyPressed(i32),
+    KeyDown(i32),
     ScrollUp,
     ScrollDown,
 }

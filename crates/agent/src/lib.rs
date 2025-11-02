@@ -15,10 +15,9 @@ use eldenring::cs::CSTaskGroupIndex;
 use eldenring::cs::CSTaskImp;
 use eldenring::fd4::FD4TaskData;
 use eldenring::position::PositionDelta;
-use eldenring_util::task::CSTaskImpExt;
 use fromsoft_shared::F32Matrix4x4;
 use fromsoft_shared::F32Vector4;
-use fromsoft_shared::{arxan, get_instance, OwnedPtr, Program};
+use fromsoft_shared::{arxan, get_instance, OwnedPtr, Program, SharedTaskImpExt};
 use game::get_offsets;
 use game::physics_coords_to_block_coords;
 use game::CSCamera;
@@ -27,6 +26,8 @@ use game::FieldArea;
 use game::FreecamMode;
 use game::MoveMapStep;
 use game::WorldChrMan;
+use glam::Mat3;
+use glam::Vec3;
 use log::LevelFilter;
 use log4rs::{
     append::file::FileAppender,
@@ -35,26 +36,26 @@ use log4rs::{
     Config,
 };
 use pelite::pe64::Pe;
+use protocol::keybind::KeybindMapping;
 use protocol::CameraMode;
 use protocol::InboundGameControlEvent;
 use protocol::OutboundGameControlEvent;
 use protocol::{CameraState, RemoteError, SettingsData};
-use protocol::keybind::KeybindMapping;
 
 use retour::static_detour;
 use windows::Win32::Foundation::HWND;
 
 use crate::game::WorldAreaTime;
-use crate::input::{Input, InputBlockMode};
-use crate::player::Player;
-use crate::keybind::Keybinds;
 use crate::gamespeed::GameSpeed;
+use crate::input::{Input, InputBlockMode};
+use crate::keybind::Keybinds;
+use crate::player::Player;
 
 mod game;
-mod input;
-mod player;
-mod keybind;
 mod gamespeed;
+mod input;
+mod keybind;
+mod player;
 
 dll_syringe::payload_procedure! {
     fn snapshot_camera_state() -> Result<CameraState, RemoteError> {
@@ -170,6 +171,7 @@ dll_syringe::payload_procedure! {
             space.clone(),
             glam::Vec3::ZERO,
             glam::Quat::IDENTITY,
+            0.0,
             48.0f32.to_radians(),
         );
         let mut playback = PlaybackCam::new(
@@ -216,13 +218,21 @@ dll_syringe::payload_procedure! {
                     return;
                 };
 
+                // Flipper is responsible keeping track of the delta time between frames.
+                // We need it to mess with the game speed.
+                let flipper = unsafe { get_instance::<CSFlipperImp>() };
+                let Some(flipper) = flipper else {
+                    return;
+                };
+
+                gamespeed.apply(flipper);
+
                 // Update input state for reading.
                 input.update();
 
                 // Apply no dead and no move if enabled.
                 player.apply(world_chr_man);
 
-                // Update game camera
                 match camera_mode {
                     CameraMode::Game => {},
                     CameraMode::Freecam => {
@@ -230,6 +240,12 @@ dll_syringe::payload_procedure! {
 
                         let freecam_input = keybinds.make_freecam_input(&input);
                         freecam.update(&freecam_input, delta.as_secs_f32());
+
+                        if freecam_input.fov_delta != 0.0 {
+                            OUTBOUND_EVENT_QUEUE.push(OutboundGameControlEvent::UpdateFreecamFov {
+                                fov: freecam.camera.fov,
+                            });
+                        }
 
                         apply_camera_to_game_camera(
                             &freecam.camera,
@@ -302,8 +318,7 @@ dll_syringe::payload_procedure! {
                         }
                     }
                 ).unwrap()
-                .enable()
-                .unwrap();
+                .enable().unwrap();
         }
 
         Ok(())
@@ -323,10 +338,10 @@ fn handle_gui_message(
     match event {
         InboundGameControlEvent::Initialize { settings } => {
             keybinds.set_mapping(settings.keybinds);
-        },
+        }
         InboundGameControlEvent::Settings { settings } => {
             keybinds.set_mapping(settings.keybinds);
-        },
+        }
         InboundGameControlEvent::SetTimeOfDay {
             hours,
             minutes,
@@ -340,7 +355,7 @@ fn handle_gui_message(
             world_area_time.request_hour = hours as _;
             world_area_time.request_minute = minutes as _;
             world_area_time.request_second = seconds as _;
-        },
+        }
         InboundGameControlEvent::SetCharacterNoDead { enabled } => player.no_dead = enabled,
         InboundGameControlEvent::SetCharacterNoMove { enabled } => player.no_move = enabled,
         InboundGameControlEvent::SetCameraMode { mode } => {
@@ -352,86 +367,56 @@ fn handle_gui_message(
             match mode {
                 CameraMode::Game => {
                     input.block_input(InputBlockMode::None);
-                },
+                }
                 CameraMode::Freecam => {
                     input.block_input(InputBlockMode::KeyboardAndMouse);
+                    let fov = cs_camera.pers_cam_1.fov;
                     *freecam = freecam_from_game_camera(&cs_camera.pers_cam_1);
-                },
+                    OUTBOUND_EVENT_QUEUE.push(OutboundGameControlEvent::UpdateFreecamFov { fov });
+                }
                 CameraMode::Playback => {
                     input.block_input(InputBlockMode::None);
-                },
+                }
             }
 
             *camera_mode = mode;
-        },
+        }
         InboundGameControlEvent::SetFreecamMovementSpeed { value } => {
             freecam.movement_speed_modifier = value
-        },
+        }
         InboundGameControlEvent::SetFreecamRotationSpeed { value } => {
             freecam.rotation_speed_modifier = value
-        },
+        }
         InboundGameControlEvent::SetFreecamFov { fov } => {
-            freecam.camera.fov = fov;
-        },
+            freecam.target_fov = fov;
+        }
         InboundGameControlEvent::SetHudDisabled { disabled } => {
             DISABLE_HUD.store(disabled, Ordering::Relaxed)
-        },
+        }
         InboundGameControlEvent::SetDebugPauseEnabled { enabled } => {
             DEBUG_PAUSE_ENABLED.store(enabled, Ordering::Relaxed)
-        },
+        }
         InboundGameControlEvent::SetFreecamLocked { locked } => {
             freecam.locked = locked;
-        },
+        }
         InboundGameControlEvent::SetGameSpeedMultiplier { value } => {
-            let flipper = unsafe { get_instance::<CSFlipperImp>() };
-            let Some(flipper) = flipper else {
-                return;
-            };
-
             gamespeed.set_multiplier(value);
-        },
+        }
         InboundGameControlEvent::SetGameSpeedMultiplierEnabled { enabled } => {
-            let flipper = unsafe { get_instance::<CSFlipperImp>() };
-            let Some(flipper) = flipper else {
-                return;
-            };
-
             gamespeed.set_multiplier_enabled(enabled);
-        },
+        }
         InboundGameControlEvent::SetKeyframes { keyframes } => {
             playback.set_keyframes(keyframes);
-        },
+        }
         InboundGameControlEvent::SetPlaybackState { playing, time } => {
             playback.playing = playing;
             playback.time = time;
-        },
 
-        // InboundGameControlEvent::TimeMultiplier { multiplier } => {
-        //     let cs_flipper = unsafe { get_instance::<CSFlipperImp>() };
-        //     let Some(cs_flipper) = cs_flipper else {
-        //         return;
-        //     };
-        //
-        //     cs_flipper.time_multiplier = *multiplier;
-        // }
-        // InboundGameControlEvent::Keyframes { keyframes } => {
-        //     playback.set_keyframes(fixup_keyframe_positions(keyframes).clone());
-        // }
-        // InboundGameControlEvent::Play { time, keyframes } => {
-        //     playback.playing = true;
-        //     playback.time = *time;
-        //     input.block_input(InputBlockMode::None);
-        //     *camera_mode = CameraMode::Playback;
-        // }
-        // InboundGameControlEvent::Pause { time } => {
-        //     playback.playing = false;
-        //     playback.time = *time;
-        // }
-        // InboundGameControlEvent::Scrub { time } => playback.time = *time,
-        //
-        // _ => {
-        //     log::info!("Got game unknown control event: {event:?}")
-        // }
+            if *camera_mode != CameraMode::Playback {
+                input.block_input(InputBlockMode::None);
+                *camera_mode = CameraMode::Playback;
+            }
+        }
     }
 }
 
@@ -444,27 +429,33 @@ fn freecam_from_game_camera(camera: &CSPersCam) -> FreeCam {
     let rz = matrix.2;
     let rw = matrix.3;
 
-    let rot = glam::Mat3::from_cols(
-        glam::Vec3::new(rx.0, rx.1, rx.2),
-        glam::Vec3::new(ry.0, ry.1, ry.2),
-        glam::Vec3::new(rz.0, rz.1, rz.2),
+    let rot = Mat3::from_cols(
+        Vec3::new(rx.0, rx.1, rx.2),
+        Vec3::new(ry.0, ry.1, ry.2),
+        Vec3::new(rz.0, rz.1, rz.2),
     );
+
+    // Break down current camera into euler angles so we can extract the roll and build a level
+    // rotation.
+    let (yaw, pitch, roll) = rot.to_euler(glam::EulerRot::YXZ);
+    let level_orientation = glam::Quat::from_euler(glam::EulerRot::YXZ, yaw, pitch, 0.0);
 
     FreeCam::new(
         Space {
-            right: glam::Vec3::X,
-            up: glam::Vec3::Y,
-            forward: glam::Vec3::Z,
+            right: Vec3::X,
+            up: Vec3::Y,
+            forward: Vec3::Z,
         },
-        glam::Vec3::new(rw.0, rw.1, rw.2),
-        glam::Quat::from_mat3(&rot),
+        Vec3::new(rw.0, rw.1, rw.2),
+        level_orientation,
+        roll,
         camera.fov,
     )
 }
 
 fn apply_camera_to_game_camera(camera: &Camera, game_camera: &mut CSPersCam) {
     // Patch up main cam with our own position and rotation.
-    let rot = glam::Mat3::from_quat(camera.rotation);
+    let rot = Mat3::from_quat(camera.rotation);
     let t = &camera.translation;
 
     game_camera.matrix.0 = F32Vector4(rot.col(0).x, rot.col(0).y, rot.col(0).z, 0.0);

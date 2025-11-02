@@ -1524,6 +1524,7 @@ dependencies = [
  "nalgebra-glm",
  "pelite",
  "undname",
+ "vtable-rs",
  "windows 0.54.0",
 ]
 
@@ -1875,6 +1876,7 @@ dependencies = [
  "egui-notify",
  "futures",
  "gilrs",
+ "glam",
  "protocol",
  "rfd",
  "serde",

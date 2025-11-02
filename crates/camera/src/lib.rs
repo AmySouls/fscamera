@@ -33,3 +33,18 @@ impl Camera {
         }
     }
 }
+
+pub trait CameraHooks {
+    fn game_translation_to_camera_translation(&self, translation: Vec3) -> Vec3 {
+        translation
+    }
+    fn camera_translation_to_game_translation(&self, translation: Vec3) -> Vec3 {
+        translation
+    }
+    fn game_rotation_to_camera_rotation(&self, rotation: Quat) -> Quat {
+        rotation
+    }
+    fn camera_rotation_to_game_rotation(&self, rotation: Quat) -> Quat {
+        rotation
+    }
+}

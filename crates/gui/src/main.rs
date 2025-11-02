@@ -1,4 +1,4 @@
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 use app::CameraControlApp;
 use eframe::egui::ViewportBuilder;
@@ -9,14 +9,15 @@ mod save;
 mod app;
 mod settings;
 mod game;
-mod keybind;
 mod world;
 mod freecam;
 mod timeline;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
-        viewport: ViewportBuilder::default().with_inner_size((800.0, 400.0)),
+        viewport: ViewportBuilder::default()
+            .with_always_on_top()
+            .with_inner_size((800.0, 400.0)),
         ..Default::default()
     };
 

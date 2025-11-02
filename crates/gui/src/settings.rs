@@ -80,7 +80,6 @@ impl Into<SettingsData> for SettingsFormat {
 impl Into<SettingsData> for SettingsDataV1 {
     fn into(self) -> SettingsData {
         SettingsData {
-            path_duration: 90.0,
             time_between_created_keyframes: 10.0,
             keybinds: KeybindMapping::default(),
         }
@@ -126,18 +125,18 @@ impl SettingsControl {
                     DragValue::new(&mut self.data.time_between_created_keyframes)
                         .speed(1.0)
                         .suffix("s")
-                        .range(0.00..=30.0),
+                        .range(1.00..=30.0),
                 );
             });
 
-            labeled_control(ui, "Path duration", |ui| {
-                ui.add(
-                    DragValue::new(&mut self.data.path_duration)
-                        .speed(1.0)
-                        .suffix("s")
-                        .range(30.00..=240.0),
-                );
-            });
+            // labeled_control(ui, "Path duration", |ui| {
+            //     ui.add(
+            //         DragValue::new(&mut self.data.path_duration)
+            //             .speed(1.0)
+            //             .suffix("s")
+            //             .range(30.00..=240.0),
+            //     );
+            // });
         });
     }
 
@@ -236,7 +235,7 @@ impl SettingsControl {
                 if ctx.input(|i| i.key_pressed(*key))
                     && let Some(key) = egui_key_to_vk(*key)
                 {
-                    caught_input = Some(KeybindInput::Keyboard(key));
+                    caught_input = Some(KeybindInput::KeyDown(key));
                 }
             }
 
@@ -330,7 +329,7 @@ fn format_input(input: &KeybindInput) -> &str {
     match input {
         KeybindInput::ScrollDown => "Scroll down",
         KeybindInput::ScrollUp => "Scroll up",
-        KeybindInput::Keyboard(vk) => match vk {
+        KeybindInput::KeyDown(vk) | KeybindInput::KeyPressed(vk) => match vk {
             0x41 => "A",
             0x42 => "B",
             0x43 => "C",

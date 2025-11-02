@@ -117,13 +117,6 @@ fn interpolate_frame(frames: &[Keyframe], t: f32) -> PlaybackFrame {
     let b = squad_tangent(k1r, k2r, k3r);
     let rotation = squad(k1r, k2r, a, b, u).normalize();
 
-    // let s1 = slerp_stable(k0r, k1r, u);
-    // let s2 = slerp_stable(a, b, u);
-    // let rotation = slerp_stable(s1, s2, 2.0 * u (1.0 - u)).normalize();
-
-    // u = u*u*(3.0 - 2.0 * u);
-
-    // let translation = catmull_rom_centripetal_vec3(k0t, k1t, k2t, k3t, u); 
     let translation = pos_tcb_hermite(
         k0t, k0.time,
         k1t, k1.time,
@@ -135,7 +128,6 @@ fn interpolate_frame(frames: &[Keyframe], t: f32) -> PlaybackFrame {
         0.3,
     ); 
 
-    // let rotation = squad_with_neighbors(k0r, k1r, k2r, k3r, u, dt0, dt1, dt2); 
     let fov = catmull_rom_centripetal_scalar(k0.fov, k1.fov, k2.fov, k3.fov, u); 
 
     PlaybackFrame {

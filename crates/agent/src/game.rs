@@ -114,12 +114,12 @@ pub fn physics_coords_to_block_coords(
         return None;
     };
 
-    let block_coords = BlockPosition(
-        physics_coords.0 - world_block_info.physics_center.0,
-        physics_coords.1 - world_block_info.physics_center.1,
-        physics_coords.2 - world_block_info.physics_center.2,
-        0.0,
-    );
+    let block_coords = BlockPosition {
+        x: physics_coords.0 - world_block_info.physics_center.0,
+        y: physics_coords.1 - world_block_info.physics_center.1,
+        z: physics_coords.2 - world_block_info.physics_center.2,
+        yaw: 0.0,
+    };
 
     Some(block_coords)
 }
@@ -137,9 +137,9 @@ pub fn block_coords_to_physics_coords(
     };
 
     let physics_coords = HavokPosition(
-        block_coords.0 + world_block_info.physics_center.0,
-        block_coords.1 + world_block_info.physics_center.1,
-        block_coords.2 + world_block_info.physics_center.2,
+        block_coords.x + world_block_info.physics_center.0,
+        block_coords.y + world_block_info.physics_center.1,
+        block_coords.z + world_block_info.physics_center.2,
         0.0,
     );
 
@@ -466,10 +466,20 @@ pub struct ChrCtrl {
 #[repr(C)]
 pub struct ChrModules {
     pub data: OwnedPtr<ChrDataModule>,
+    unk8: [u8; 0x68],
+    pub fall: OwnedPtr<CSChrFallModule>,
 }
 
 #[repr(C)]
 pub struct ChrDataModule {
     unk0: [u8; 0x189],
     pub no_dead: bool,
+}
+
+#[repr(C)]
+pub struct CSChrFallModule {
+    vtable: i64,
+    unk8: [u8; 0x10],
+    pub fall_timer: f32,
+    unk1c: u32,
 }

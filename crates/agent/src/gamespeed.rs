@@ -26,7 +26,7 @@ impl GameSpeed {
     pub fn apply(&self, flipper: &mut CSFlipperImp) {
         if self.enabled {
             flipper.time_multiplier = self.multiplier;
-        } else if self.enabled && flipper.time_multiplier != 1.0 {
+        } else if !self.enabled && flipper.time_multiplier != 1.0 {
             flipper.time_multiplier = 1.0;
         }
     }

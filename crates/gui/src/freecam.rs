@@ -1,12 +1,13 @@
 use eframe::egui::{Ui};
 use egui_notify::Toasts;
 
-use crate::{controls::{drag_percentage, labeled_control, panel_header}, game::RemoteGame};
+use crate::{controls::{drag_fov, drag_percentage, labeled_control, panel_header}, game::RemoteGame};
 
 pub struct FreeCamControl {
     locked: bool,
     movement_speed: f32,
     rotation_speed: f32,
+    fov: f32,
 }
 
 impl Default for FreeCamControl {
@@ -15,6 +16,7 @@ impl Default for FreeCamControl {
             locked: false,
             movement_speed: 1.0,
             rotation_speed: 1.0,
+            fov: 48.0f32.to_radians(),
         }
     }
 }
@@ -32,6 +34,20 @@ impl FreeCamControl {
             });
 
             ui.horizontal(|ui| {
+                labeled_control(ui, "Field of view", |ui| {
+                    if drag_fov(
+                        ui,
+                        "",
+                        &mut self.fov,
+                    )
+                        .changed()
+                            && let Err(e) = remote.set_freecam_fov(self.fov) {
+                                println!("Changed fov");
+                            notify.error(format!("Could not change freecam fov: {e}"));
+                    }
+
+                });
+
                 labeled_control(ui, "Movement speed", |ui| {
                     if drag_percentage(
                         ui,
@@ -69,5 +85,9 @@ impl FreeCamControl {
 
     pub fn locked(&self) -> bool {
         self.locked
+    }
+
+    pub fn set_fov(&mut self, fov: &f32) {
+        self.fov = *fov;
     }
 }

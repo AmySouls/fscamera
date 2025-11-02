@@ -1,11 +1,10 @@
-use eframe::egui::{Align2, Color32, DragValue, FontId, Key, Pos2, Rect, Sense, Ui, Vec2};
+use eframe::egui::{Align, Align2, Color32, DragValue, FontId, Key, Layout, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2};
 use egui_notify::Toasts;
 use protocol::{RemoteError, SettingsData, keyframe::{Keyframe, Quat, Vec3}};
 
-use crate::{controls::{drag_angle, panel_header}, game::RemoteGame};
+use crate::{controls::drag_fov, game::RemoteGame};
 
 const TIMELINE_HEIGHT: f32 = 50.0;
-const KEYFRAME_CREATION_INTERVAL: f32 = 5.0;
 
 pub struct TimelineControl {
     keyframes: Vec<Keyframe>,
@@ -13,26 +12,40 @@ pub struct TimelineControl {
     selected_index: Option<usize>,
     playing: bool,
     time: f32,
+    path_duration: f32,
     last_update: Option<std::time::Instant>,
-    place_keyframes_at_time: bool,
+
+    equally_space_keyframes: bool,
 }
 
-impl Default for TimelineControl {
-    fn default() -> Self {
+pub enum TimelineControlCommand {
+    PlaybackDone,
+    Scrub,
+}
+
+impl TimelineControl {
+    pub fn new() -> Self {
         Self {
             keyframes: Vec::new(),
             dragging_index: None,
             selected_index: None,
             playing: false,
             time: 0.0,
+            path_duration: 30.0,
             last_update: None,
-            place_keyframes_at_time: false,
+            equally_space_keyframes: true,
         }
     }
-}
 
-impl TimelineControl {
-    pub fn update(&mut self, ui: &mut Ui, remote: &RemoteGame, notify: &mut Toasts, settings: &SettingsData) {
+    pub fn update(
+        &mut self,
+        ui: &mut Ui,
+        remote: &RemoteGame,
+        notify: &mut Toasts,
+        settings: &SettingsData,
+    ) -> Option<TimelineControlCommand> {
+        let mut result = None;
+
         let now = std::time::Instant::now();
         let delta_seconds = if let Some(last) = self.last_update {
             (now - last).as_secs_f32()
@@ -42,20 +55,23 @@ impl TimelineControl {
 
         if self.playing {
             self.time += delta_seconds;
+            self.last_update = Some(now);
 
-            if self.time > settings.path_duration {
+            let end = self.keyframes.last().map(|k| k.time).unwrap_or_default();
+            if self.time > end {
                 self.playing = false;
                 self.time = 0.0;
 
-                // TODO: kick back into freecam mode
+                result = Some(TimelineControlCommand::PlaybackDone);
             }
+        } else {
+            self.last_update = None;
         }
 
         let mut flush_keyframes = false;
-
         ui.vertical(|ui| {
             if self.selected_index.is_some() {
-                flush_keyframes |= self.keyframe_controls(ui, remote, notify);
+                flush_keyframes |= self.keyframe_controls(ui);
                 ui.separator();
             }
 
@@ -72,6 +88,10 @@ impl TimelineControl {
                     if ui.button("❌ Delete Keyframe").clicked() {
                         self.keyframes.remove(self.selected_index.take().unwrap());
 
+                        if self.equally_space_keyframes {
+                            self.spread_frames();
+                        }
+
                         if !self.keyframes.is_empty() {
                             self.selected_index = Some(self.keyframes.len() - 1);
                         }
@@ -79,8 +99,34 @@ impl TimelineControl {
                 });
 
                 ui.checkbox(
-                    &mut self.place_keyframes_at_time,
-                    "Place keyframes at current playback time",
+                    &mut self.equally_space_keyframes,
+                    "Equally space created frames",
+                );
+
+                let original_path_duration = self.path_duration;
+                ui.with_layout(
+                    Layout::default().with_cross_align(Align::RIGHT),
+                    |ui| {
+                        ui.horizontal(|ui| {
+                            if ui.add(
+                                DragValue::new(&mut self.path_duration)
+                                .speed(1.0)
+                                .suffix("s")
+                                .range(1.00..=240.0),
+                            ).changed() {
+                                if self.equally_space_keyframes {
+                                    self.spread_frames();
+                                    flush_keyframes = true;
+                                }
+
+                                // Correct playback time to remain at the same point relative to the keyframes.
+                                let ratio = self.path_duration / original_path_duration;
+                                self.time *= ratio;
+                            }
+
+                            ui.label("Path duration");
+                        });
+                    },
                 );
             });
 
@@ -99,10 +145,10 @@ impl TimelineControl {
 
             let timeline_top = timeline_rect.top();
             let timeline_left = timeline_rect.left();
-            let pixels_per_second = ui.available_width() / settings.path_duration;
+            let pixels_per_second = ui.available_width() / self.path_duration;
 
             // Draw second markers
-            let total_seconds = settings.path_duration.ceil() as usize;
+            let total_seconds = self.path_duration.ceil() as usize;
             for second in 0..=total_seconds {
                 let x = timeline_left + second as f32 * pixels_per_second;
                 painter.line_segment(
@@ -113,7 +159,7 @@ impl TimelineControl {
                     (1.0, Color32::WHITE),
                 );
 
-                let denominator = if settings.path_duration < 120.0 {
+                let denominator = if self.path_duration < 120.0 {
                     5
                 } else {
                     10
@@ -134,7 +180,6 @@ impl TimelineControl {
                 }
             }
 
-            // Draw keyframe markers
             for (i, keyframe) in self.keyframes.iter_mut().enumerate() {
                 let x = timeline_left + keyframe.time * pixels_per_second;
                 let color = if self.selected_index == Some(i) {
@@ -144,12 +189,29 @@ impl TimelineControl {
                 };
 
                 let kf_top = timeline_top + 30.0;
-                let kf_bottom = timeline_rect.bottom() - 5.0;
+                // let kf_bottom = timeline_rect.bottom() - 5.0;
 
-                let line_rect =
-                    Rect::from_min_max(Pos2::new(x - 4.0, kf_top), Pos2::new(x + 4.0, kf_bottom));
-                let response = ui.allocate_rect(line_rect, Sense::click_and_drag());
-                painter.rect_filled(line_rect, 2.0, color);
+                // let line_rect =
+                //     Rect::from_min_max(Pos2::new(x - 4.0, kf_top), Pos2::new(x + 4.0, kf_bottom));
+                // let response = ui.allocate_rect(line_rect, Sense::click_and_drag());
+                // painter.rect_filled(line_rect, 2.0, color);
+                let size = 6.0;
+                let center = Pos2::new(x, kf_top);
+
+                let points = vec![
+                    Pos2::new(center.x, center.y - size), // top
+                    Pos2::new(center.x + size, center.y), // right
+                    Pos2::new(center.x, center.y + size), // bottom
+                    Pos2::new(center.x - size, center.y), // left
+                ];
+
+                let response = ui.allocate_rect(
+                    Rect::from_center_size(center, Vec2::splat(size * 2.0)),
+                    Sense::click_and_drag(),
+                );
+
+                painter.add(Shape::convex_polygon(points, color, Stroke::NONE));
+                // painter.circle_filled(center, radius, color);
 
                 if response.clicked() {
                     self.selected_index = Some(i);
@@ -161,7 +223,7 @@ impl TimelineControl {
 
                 if response.dragged() && self.dragging_index == Some(i) {
                     keyframe.time += response.drag_delta().x / pixels_per_second;
-                    keyframe.time = keyframe.time.clamp(0.0, settings.path_duration);
+                    keyframe.time = keyframe.time.clamp(0.0, self.path_duration);
                     flush_keyframes = true;
                 }
             }
@@ -173,8 +235,8 @@ impl TimelineControl {
 
             painter.line_segment(
                 [
-                Pos2::new(playhead_x, playhead_top),
-                Pos2::new(playhead_x, playhead_bottom),
+                    Pos2::new(playhead_x, playhead_top),
+                    Pos2::new(playhead_x, playhead_bottom),
                 ],
                 (2.0, Color32::RED),
             );
@@ -192,25 +254,17 @@ impl TimelineControl {
                 && let Some(pointer_pos) = ui.input(|i| i.pointer.hover_pos())
             {
                 let relative_x = pointer_pos.x - timeline_rect.left();
-                let new_time = (relative_x / pixels_per_second).clamp(0.0, settings.path_duration);
+                let new_time = (relative_x / pixels_per_second).clamp(0.0, self.path_duration);
                 self.time = new_time;
-                self.last_update = Some(std::time::Instant::now());
-
-                remote.set_playback_state(false, self.time);
-            }
-
-            // Pause when scrubbing
-            if timeline_response.dragged() {
                 self.playing = false;
+                if let Err(e) = remote.set_playback_state(false, self.time) {
+                    notify.error(format!("Could not send scrub command to game: {e}"));
+                }
+
+                result = Some(TimelineControlCommand::Scrub);
             }
 
             let input = ui.input(|i| i.clone());
-
-            // // Toggle playback
-            // if input.key_pressed(Key::Space) {
-            //     self.toggle_playing();
-            // }
-
             if input.key_pressed(Key::Delete) && let Some(selected_index) = self.selected_index.take() {
                 self.keyframes.remove(selected_index);
 
@@ -227,21 +281,13 @@ impl TimelineControl {
             }
         });
 
-        // if changed
-        //     && let Err(e) =
-        //         self.remote
-        //             .as_ref()
-        //             .unwrap()
-        //             .post_event(InboundGameControlEvent::Keyframes {
-        //                 keyframes: self.keyframes.clone(),
-        //             })
-        // {
-        //     self.notify
-        //         .error(format!("Could not send keyframes to game: {e}"));
-        // }
+        result
     }
 
-    fn keyframe_controls(&mut self, ui: &mut Ui, remote: &RemoteGame, notify: &mut Toasts) -> bool {
+    fn keyframe_controls(
+        &mut self,
+        ui: &mut Ui,
+    ) -> bool {
         let Some(selected) = self.selected_index else {
             return false;
         };
@@ -250,44 +296,64 @@ impl TimelineControl {
         let mut flush_keyframes = false;
 
         ui.horizontal(|ui| {
-            ui.label("Time (seconds):");
+            ui.label("Time (seconds)");
 
-            flush_keyframes |= ui.add(DragValue::new(&mut kf.time).speed(0.01)).changed();
+            flush_keyframes |= ui.add(
+                DragValue::new(&mut kf.time)
+                    .speed(0.01)
+                    .range(0.0..=self.path_duration)
+            ).changed();
         });
 
         ui.horizontal(|ui| {
-            ui.label("Position:");
+            ui.label("Position (xyz)");
 
             flush_keyframes |= ui
-                .add(DragValue::new(&mut kf.position.x).speed(0.1).prefix("x: "))
+                .add(DragValue::new(&mut kf.position.x).speed(0.1))
                 .changed();
             flush_keyframes |= ui
-                .add(DragValue::new(&mut kf.position.y).speed(0.1).prefix("y: "))
+                .add(DragValue::new(&mut kf.position.y).speed(0.1))
                 .changed();
             flush_keyframes |= ui
-                .add(DragValue::new(&mut kf.position.z).speed(0.1).prefix("z: "))
+                .add(DragValue::new(&mut kf.position.z).speed(0.1))
                 .changed();
         });
 
         ui.horizontal(|ui| {
-            ui.label(format!("Rotation: {:?}", kf.orientation));
+            ui.label(format!("Rotation (ypr)"));
 
-            // changed |= drag_pitch(ui, "pitch", &mut kf.orientation.0).changed();
-            // changed |= drag_angle_signed(ui, "yaw", &mut kf.orientation.1).changed();
-            // changed |= drag_angle_signed(ui, "roll", &mut kf.orientation.2).changed();
+            let q = glam::quat(
+                kf.orientation.0,
+                kf.orientation.1,
+                kf.orientation.2,
+                kf.orientation.3,
+            );
+            let (mut yaw, mut pitch, mut roll) = q.to_euler(glam::EulerRot::YXZ);
+
+            let mut changed_orientation = false;
+            changed_orientation |= ui.drag_angle(&mut yaw).changed();
+            changed_orientation |= ui.drag_angle(&mut pitch).changed();
+            changed_orientation |= ui.drag_angle(&mut roll).changed();
+
+            if changed_orientation {
+                let q = glam::Quat::from_euler(
+                    glam::EulerRot::YXZ,
+                    yaw,
+                    pitch,
+                    roll,
+                );
+
+                kf.orientation = protocol::keyframe::Quat(q.x, q.y, q.z, q.w);
+                flush_keyframes = true;
+            }
         });
 
         ui.horizontal(|ui| {
-            ui.label("FOV:");
-            flush_keyframes |= drag_angle(ui, "", &mut kf.fov).changed();
+            ui.label("FoV");
+            flush_keyframes |= drag_fov(ui, "", &mut kf.fov).changed();
         });
 
         flush_keyframes
-    }
-
-    pub fn set_keyframes(&mut self, keyframes: Vec<Keyframe>) {
-        self.keyframes = keyframes;
-        self.selected_index = None;
     }
 
     pub fn keyframes(&self) -> Vec<Keyframe> {
@@ -303,6 +369,7 @@ impl TimelineControl {
     }
 
     pub fn play(&mut self) {
+        self.time = 0.0;
         self.playing = true;
     }
 
@@ -310,32 +377,56 @@ impl TimelineControl {
         self.playing = false;
     }
 
-    fn toggle_playing(&mut self) {
-        self.playing = !self.playing;
-    }
-
-    pub fn create_keyframe(&mut self, remote: &RemoteGame, settings: &SettingsData) -> Result<(), RemoteError> {
-        let time = if !self.place_keyframes_at_time && let Some(selected) = self.selected_index {
-            self.keyframes[selected].time + settings.time_between_created_keyframes
-        } else {
-            self.time
-        };
-
+    pub fn create_keyframe(
+        &mut self,
+        remote: &RemoteGame,
+        settings: &SettingsData,
+    ) -> Result<(), RemoteError> {
         let camera_state = remote.snapshot_camera_state()?;
         let pos = camera_state.position;
         let rot = camera_state.orientation;
 
-        let kf = Keyframe {
-            time,
+        let mut kf = Keyframe {
+            time: 0.0,
             map_id: camera_state.map_id,
             position: Vec3::new(pos.x, pos.y, pos.z),
             orientation: Quat(rot.0, rot.1, rot.2, rot.3),
             fov: camera_state.fov,
         };
 
+        if let Some(selected) = self.selected_index {
+            kf.time = self.keyframes[selected].time + settings.time_between_created_keyframes;
+        };
+
+        // if self.place_keyframes_at_time {
+        //     kf.time = self.time;
+        // }
+
+        if self.equally_space_keyframes {
+            // Assign temp time to ensure we get sorted as last entry.
+            kf.time = f32::MAX;
+        }
+
         self.keyframes.push(kf);
         self.selected_index = Some(self.keyframes.len() - 1);
 
+        if self.equally_space_keyframes {
+            self.spread_frames();
+        }
+
         Ok(())
+    }
+
+    fn spread_frames(&mut self) {
+        self.keyframes.sort_by(|a, b| a.time.total_cmp(&b.time));
+
+        // Calculate required time between frames.
+        let spacing = self.path_duration / (self.keyframes.len() - 1) as f32;
+
+        let mut current_time = 0.0;
+        for kf in self.keyframes.iter_mut() {
+            kf.time = current_time;
+            current_time += spacing;
+        }
     }
 }

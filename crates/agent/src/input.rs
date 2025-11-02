@@ -57,9 +57,7 @@ pub enum InputBlockMode {
 #[derive(Debug)]
 pub struct Input {
     orientation_delta: (f32, f32),
-    mousewheel_delta: f32,
-    movement_delta: (f32, f32, f32),
-    debounce: HashMap<i32, Instant>,
+    mousewheel_delta: i16,
 
     keypress: [bool; KEYSPACE_SIZE],
     keydown: [bool; KEYSPACE_SIZE],
@@ -74,8 +72,6 @@ impl Default for Input {
         Self {
             orientation_delta: Default::default(),
             mousewheel_delta: Default::default(),
-            movement_delta: Default::default(),
-            debounce: Default::default(),
 
             keypress: [false; KEYSPACE_SIZE],
             keydown: [false; KEYSPACE_SIZE],
@@ -92,8 +88,6 @@ type GetRawInputDataFn = unsafe extern "system" fn(
     cb_size_header: u32,
 ) -> i32;
 
-type XInputGetState = unsafe extern "system" fn(u32, *mut XINPUT_STATE) -> u32;
-
 static_detour! {
     static GET_RAW_INPUT_DATA: unsafe extern "system" fn(
         HRAWINPUT, u32, *mut c_void, *mut u32, u32
@@ -109,7 +103,7 @@ impl Input {
     pub fn update(&mut self) {
         // If no mouse movement events are available in the queue, the mouse did not move.
         self.orientation_delta = (0.0, 0.0);
-        self.mousewheel_delta = 0.0;
+        self.mousewheel_delta = 0;
 
         self.keydown.fill(false);
         self.keyup.fill(false);
@@ -140,7 +134,7 @@ impl Input {
                     );
                 }
                 InputEvent::MouseWheel(d) => {
-                    self.mousewheel_delta = d as f32;
+                    self.mousewheel_delta = d;
                 }
             }
         }
@@ -154,7 +148,7 @@ impl Input {
         self.keydown[key as usize]
     }
 
-    pub fn mousewheel_delta(&self) -> f32 {
+    pub fn mousewheel_delta(&self) -> i16 {
         self.mousewheel_delta
     }
 
@@ -162,21 +156,11 @@ impl Input {
         self.orientation_delta
     }
 
-    pub fn movement_delta(&self) -> (f32, f32, f32) {
-        self.movement_delta
-    }
-
     pub fn block_input(&mut self, target: InputBlockMode) {
         match target {
-            InputBlockMode::None => {
-                BLOCK_INPUT_KBM.store(false, Ordering::Relaxed);
-            }
-            InputBlockMode::KeyboardAndMouse => {
-                BLOCK_INPUT_KBM.store(true, Ordering::Relaxed);
-            }
-            InputBlockMode::Gamepad => {
-                BLOCK_INPUT_KBM.store(false, Ordering::Relaxed);
-            }
+            InputBlockMode::None => BLOCK_INPUT_KBM.store(false, Ordering::Relaxed),
+            InputBlockMode::KeyboardAndMouse => BLOCK_INPUT_KBM.store(true, Ordering::Relaxed),
+            InputBlockMode::Gamepad => BLOCK_INPUT_KBM.store(false, Ordering::Relaxed),
         }
     }
 }
@@ -189,75 +173,75 @@ pub unsafe fn setup_hook() {
         transmute(target)
     };
 
-unsafe {
-    GET_RAW_INPUT_DATA
-        .initialize(
-            target,
-            |h_raw_input: HRAWINPUT,
-             ui_command: u32,
-             p_data: *mut c_void,
-             pcb_size: *mut u32,
-             cba_size_header: u32| {
-                let ret = GET_RAW_INPUT_DATA.call(
-                    h_raw_input,
-                    ui_command,
-                    p_data,
-                    pcb_size,
-                    cba_size_header,
-                );
+    unsafe {
+        GET_RAW_INPUT_DATA
+            .initialize(
+                target,
+                |h_raw_input: HRAWINPUT,
+                 ui_command: u32,
+                 p_data: *mut c_void,
+                 pcb_size: *mut u32,
+                 cba_size_header: u32| {
+                    let ret = GET_RAW_INPUT_DATA.call(
+                        h_raw_input,
+                        ui_command,
+                        p_data,
+                        pcb_size,
+                        cba_size_header,
+                    );
 
-                if ret > 0 && ui_command == RID_INPUT.0 && !p_data.is_null() {
-                    let ri = &mut *(p_data as *mut RAWINPUT);
+                    if ret > 0 && ui_command == RID_INPUT.0 && !p_data.is_null() {
+                        let ri = &mut *(p_data as *mut RAWINPUT);
 
-                    // "Good enough"
-                    let mut block_input = BLOCK_INPUT_KBM.load(Ordering::Relaxed);
+                        // "Good enough"
+                        let mut block_input = BLOCK_INPUT_KBM.load(Ordering::Relaxed);
 
-                    if ri.header.dwType == RIM_TYPEMOUSE.0 {
-                        let mouse = ri.data.mouse;
+                        if ri.header.dwType == RIM_TYPEMOUSE.0 {
+                            let mouse = ri.data.mouse;
 
-                        INPUT_EVENTS.push(InputEvent::MouseDelta(mouse.lLastX, mouse.lLastY));
+                            INPUT_EVENTS.push(InputEvent::MouseDelta(mouse.lLastX, mouse.lLastY));
 
+                            let flags = unsafe { mouse.Anonymous.Anonymous.usButtonFlags };
+                            if (flags & RI_MOUSE_WHEEL) != 0 {
+                                let delta =
+                                    unsafe { mouse.Anonymous.Anonymous.usButtonData as i16 };
+                                INPUT_EVENTS.push(InputEvent::MouseWheel(delta));
+                            }
 
-                        let flags = unsafe { mouse.Anonymous.Anonymous.usButtonFlags };
-                        if (flags & RI_MOUSE_WHEEL) != 0 {
-                            let delta = unsafe { mouse.Anonymous.Anonymous.usButtonData as i16 };
-                            INPUT_EVENTS.push(InputEvent::MouseWheel(delta));
+                            // if (flags & RI_MOUSE_HWHEEL.0) != 0 {
+                            //     let delta = unsafe { mouse.Anonymous.Anonymous.usButtonData as i16 };
+                            //     INPUT_EVENTS.push(InputEvent::MouseHWheel(delta));
+                            // }
+                        } else if ri.header.dwType == RIM_TYPEKEYBOARD.0 {
+                            let kbd = ri.data.keyboard;
+
+                            // Decide up/down via RI_KEY_BREAK (works for KEYDOWN and SYSKEYDOWN)
+                            let is_break = (kbd.Flags & RI_KEY_BREAK as u16) != 0;
+                            let key = normalize_vk(kbd.VKey, kbd.MakeCode, kbd.Flags);
+
+                            if !is_break {
+                                INPUT_EVENTS.push(InputEvent::KeyDown { key });
+                            } else {
+                                INPUT_EVENTS.push(InputEvent::KeyUp { key });
+                            }
+
+                            // Do not filter escape
+                            if key == 0x1B {
+                                block_input = false;
+                            }
                         }
 
-                        // if (flags & RI_MOUSE_HWHEEL.0) != 0 {
-                        //     let delta = unsafe { mouse.Anonymous.Anonymous.usButtonData as i16 };
-                        //     INPUT_EVENTS.push(InputEvent::MouseHWheel(delta));
-                        // }
-                    } else if ri.header.dwType == RIM_TYPEKEYBOARD.0 {
-                        let kbd = ri.data.keyboard;
-
-                        // Decide up/down via RI_KEY_BREAK (works for KEYDOWN and SYSKEYDOWN)
-                        let is_break = (kbd.Flags & RI_KEY_BREAK as u16) != 0;
-                        let key = normalize_vk(kbd.VKey, kbd.MakeCode, kbd.Flags);
-
-                        if !is_break {
-                            INPUT_EVENTS.push(InputEvent::KeyDown { key });
-                        } else {
-                            INPUT_EVENTS.push(InputEvent::KeyUp { key });
-                        }
-
-                        // Do not filter escape
-                        if key == 0x1B {
-                            block_input = false;
+                        if block_input {
+                            return 0;
                         }
                     }
 
-                    if block_input {
-                        return 0;
-                    }
-                }
-
-                ret
-            },
-        )
-        .unwrap()
-        .enable()
-        .unwrap();
+                    ret
+                },
+            )
+            .unwrap()
+            .enable()
+            .unwrap();
     }
 }
 
@@ -270,11 +254,8 @@ pub fn is_game_focussed() -> bool {
 }
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyboardLayout, MapVirtualKeyExW,
-    MAPVK_VSC_TO_VK_EX,
-    VK_CONTROL, VK_LCONTROL, VK_RCONTROL,
-    VK_MENU, VK_LMENU, VK_RMENU,
-    VK_SHIFT, VK_LSHIFT, VK_RSHIFT,
+    GetKeyboardLayout, MapVirtualKeyExW, MAPVK_VSC_TO_VK_EX, VK_CONTROL, VK_LCONTROL, VK_LMENU,
+    VK_LSHIFT, VK_MENU, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{RI_KEY_BREAK, RI_KEY_E0, RI_KEY_E1};
 
@@ -283,18 +264,42 @@ fn normalize_vk(vkey: u16, make_code: u16, flags: u16) -> u16 {
     // Refine VK using scan code + extended flag to get L/R variants.
     let hkl = unsafe { GetKeyboardLayout(0) };
     let mut sc = make_code as u32;
-    if (flags & RI_KEY_E0 as u16) != 0 { sc |= 0xE000; }
-    if (flags & RI_KEY_E1 as u16) != 0 { sc |= 0xE100; }
+    if (flags & RI_KEY_E0 as u16) != 0 {
+        sc |= 0xE000;
+    }
+    if (flags & RI_KEY_E1 as u16) != 0 {
+        sc |= 0xE100;
+    }
     let mapped = unsafe { MapVirtualKeyExW(sc, MAPVK_VSC_TO_VK_EX, Some(hkl)) } as u16;
 
     match vkey {
-        x if x == VK_SHIFT.0 as u16 => if mapped != 0 { mapped } else { VK_LSHIFT.0 as u16 },
+        x if x == VK_SHIFT.0 as u16 => {
+            if mapped != 0 {
+                mapped
+            } else {
+                VK_LSHIFT.0 as u16
+            }
+        }
         x if x == VK_CONTROL.0 as u16 => {
-            if (flags & RI_KEY_E0 as u16) != 0 { VK_RCONTROL.0 as u16 } else { VK_LCONTROL.0 as u16 }
+            if (flags & RI_KEY_E0 as u16) != 0 {
+                VK_RCONTROL.0 as u16
+            } else {
+                VK_LCONTROL.0 as u16
+            }
         }
         x if x == VK_MENU.0 as u16 => {
-            if (flags & RI_KEY_E0 as u16) != 0 { VK_RMENU.0 as u16 } else { VK_LMENU.0 as u16 }
+            if (flags & RI_KEY_E0 as u16) != 0 {
+                VK_RMENU.0 as u16
+            } else {
+                VK_LMENU.0 as u16
+            }
         }
-        _ => if mapped != 0 { mapped } else { vkey },
+        _ => {
+            if mapped != 0 {
+                mapped
+            } else {
+                vkey
+            }
+        }
     }
 }
