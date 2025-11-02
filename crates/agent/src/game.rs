@@ -1,5 +1,4 @@
-use std::mem::transmute;
-use std::{borrow::Cow, fmt::Display, ptr::NonNull, sync::LazyLock};
+use std::{fmt::Display, ptr::NonNull, sync::LazyLock};
 
 use eldenring::{
     cs::CSPersCam,

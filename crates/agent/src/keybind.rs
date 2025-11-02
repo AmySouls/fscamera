@@ -1,10 +1,10 @@
 use camera::freecam::FreeCamInput;
 use protocol::{
     keybind::{KeybindInput, KeybindMapping},
-    OutboundGameControlEvent, SettingsData,
+    OutboundGameControlEvent,
 };
 
-use crate::{input::Input, DISABLE_HUD, OUTBOUND_EVENT_QUEUE};
+use crate::{input::Input, OUTBOUND_EVENT_QUEUE};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Keybinds {
@@ -68,7 +68,7 @@ impl Keybinds {
         for (binding, event) in bindings {
             if binding
                 .as_ref()
-                .is_none_or(|b| !Self::input_active(input, &b))
+                .is_none_or(|b| !Self::input_active(input, b))
             {
                 continue;
             }
@@ -118,12 +118,12 @@ impl Keybinds {
         self.mapping
             .increase_fov
             .as_ref()
-            .is_some_and(|b| Self::input_active(input, &b))
+            .is_some_and(|b| Self::input_active(input, b))
             .then(|| freecam_input.fov_delta += 1.0f32.to_radians());
         self.mapping
             .decrease_fov
             .as_ref()
-            .is_some_and(|b| Self::input_active(input, &b))
+            .is_some_and(|b| Self::input_active(input, b))
             .then(|| freecam_input.fov_delta -= 1.0f32.to_radians());
 
         // Speed modifiers

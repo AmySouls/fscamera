@@ -2,7 +2,6 @@ use std::mem::transmute;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::OnceLock;
-use std::time::Duration;
 use std::time::Instant;
 
 use camera::freecam::FreeCam;
@@ -14,12 +13,9 @@ use eldenring::cs::CSPersCam;
 use eldenring::cs::CSTaskGroupIndex;
 use eldenring::cs::CSTaskImp;
 use eldenring::fd4::FD4TaskData;
-use eldenring::position::PositionDelta;
-use fromsoft_shared::F32Matrix4x4;
 use fromsoft_shared::F32Vector4;
 use fromsoft_shared::{arxan, get_instance, OwnedPtr, Program, SharedTaskImpExt};
 use game::get_offsets;
-use game::physics_coords_to_block_coords;
 use game::CSCamera;
 use game::CSFlipperImp;
 use game::FieldArea;
@@ -35,14 +31,12 @@ use log4rs::{
     Config,
 };
 use pelite::pe64::Pe;
-use protocol::keybind::KeybindMapping;
 use protocol::CameraMode;
 use protocol::InboundGameControlEvent;
 use protocol::OutboundGameControlEvent;
 use protocol::{CameraState, RemoteError, SettingsData};
 
 use retour::static_detour;
-use windows::Win32::Foundation::HWND;
 
 use crate::game::WorldAreaTime;
 use crate::gamespeed::GameSpeed;
@@ -235,7 +229,7 @@ dll_syringe::payload_procedure! {
                 match camera_mode {
                     CameraMode::Game => {},
                     CameraMode::Freecam => {
-                        keybinds.execute_freecam_bindings(&mut input);
+                        keybinds.execute_freecam_bindings(&input);
 
                         let freecam_input = keybinds.make_freecam_input(&input);
                         freecam.update(&freecam_input, delta.as_secs_f32());

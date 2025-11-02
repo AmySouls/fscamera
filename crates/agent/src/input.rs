@@ -1,8 +1,6 @@
-use std::collections::HashMap;
 use std::ffi::c_void;
 use std::mem::transmute;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
 
 use crossbeam::queue::SegQueue;
 use eldenring::cs::CSWindowImp;
@@ -14,22 +12,10 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::LibraryLoader::GetProcAddress;
 use windows::Win32::UI::Input::HRAWINPUT;
 use windows::Win32::UI::Input::RAWINPUT;
-use windows::Win32::UI::Input::RAWINPUTDEVICE;
-use windows::Win32::UI::Input::RAWINPUTHEADER;
-use windows::Win32::UI::Input::RIDEV_INPUTSINK;
 use windows::Win32::UI::Input::RID_INPUT;
-use windows::Win32::UI::Input::RIM_TYPEHID;
 use windows::Win32::UI::Input::RIM_TYPEMOUSE;
-use windows::Win32::UI::Input::{GetRawInputData, RIM_TYPEKEYBOARD};
-use windows::Win32::UI::WindowsAndMessaging::CallWindowProcW;
-use windows::Win32::UI::WindowsAndMessaging::DefWindowProcW;
-use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+use windows::Win32::UI::Input::RIM_TYPEKEYBOARD;
 use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
-use windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW;
-use windows::Win32::UI::WindowsAndMessaging::GWLP_WNDPROC;
-use windows::Win32::UI::WindowsAndMessaging::WM_INPUT;
-use windows::Win32::UI::WindowsAndMessaging::WNDPROC;
 
 enum InputEvent {
     MouseDelta(i32, i32),
@@ -247,7 +233,7 @@ pub fn is_game_focussed() -> bool {
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyboardLayout, MapVirtualKeyExW, MAPVK_VSC_TO_VK_EX, VK_CONTROL, VK_LCONTROL, VK_LMENU,
-    VK_LSHIFT, VK_MENU, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_SHIFT,
+    VK_LSHIFT, VK_MENU, VK_RCONTROL, VK_RMENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{RI_KEY_BREAK, RI_KEY_E0, RI_KEY_E1};
 
@@ -265,25 +251,25 @@ fn normalize_vk(vkey: u16, make_code: u16, flags: u16) -> u16 {
     let mapped = unsafe { MapVirtualKeyExW(sc, MAPVK_VSC_TO_VK_EX, Some(hkl)) } as u16;
 
     match vkey {
-        x if x == VK_SHIFT.0 as u16 => {
+        x if x == VK_SHIFT.0 => {
             if mapped != 0 {
                 mapped
             } else {
-                VK_LSHIFT.0 as u16
+                VK_LSHIFT.0
             }
         }
-        x if x == VK_CONTROL.0 as u16 => {
+        x if x == VK_CONTROL.0 => {
             if (flags & RI_KEY_E0 as u16) != 0 {
-                VK_RCONTROL.0 as u16
+                VK_RCONTROL.0
             } else {
-                VK_LCONTROL.0 as u16
+                VK_LCONTROL.0
             }
         }
-        x if x == VK_MENU.0 as u16 => {
+        x if x == VK_MENU.0 => {
             if (flags & RI_KEY_E0 as u16) != 0 {
-                VK_RMENU.0 as u16
+                VK_RMENU.0
             } else {
-                VK_LMENU.0 as u16
+                VK_LMENU.0
             }
         }
         _ => {

@@ -67,9 +67,9 @@ pub enum SettingsFormat {
     V2(SettingsData),
 }
 
-impl Into<SettingsData> for SettingsFormat {
-    fn into(self) -> SettingsData {
-        match self {
+impl From<SettingsFormat> for SettingsData {
+    fn from(val: SettingsFormat) -> Self {
+        match val {
             SettingsFormat::V1(v) => v.into(),
             SettingsFormat::V2(v) => v,
         }
@@ -77,8 +77,8 @@ impl Into<SettingsData> for SettingsFormat {
 }
 
 // Migrate from old settings format to new
-impl Into<SettingsData> for SettingsDataV1 {
-    fn into(self) -> SettingsData {
+impl From<SettingsDataV1> for SettingsData {
+    fn from(val: SettingsDataV1) -> Self {
         SettingsData {
             time_between_created_keyframes: 10.0,
             keybinds: KeybindMapping::default(),

@@ -320,7 +320,7 @@ impl TimelineControl {
         });
 
         ui.horizontal(|ui| {
-            ui.label(format!("Rotation (ypr)"));
+            ui.label("Rotation (ypr)".to_string());
 
             let q = glam::quat(
                 kf.orientation.0,
