@@ -49,7 +49,7 @@ impl RemoteGame {
                         pin_mut!(shutdown);
 
                         loop {
-                            let timeout = Timer::after(Duration::from_millis(500)).fuse();
+                            let timeout = Timer::after(Duration::from_millis(60)).fuse();
 
                             pin_mut!(timeout);
 
