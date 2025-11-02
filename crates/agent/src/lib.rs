@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 use std::time::Instant;
 
-use camera::freecam::{FreeCam, FreeCamInput};
+use camera::freecam::FreeCam;
 use camera::playback::PlaybackCam;
 use camera::Camera;
 use camera::Space;
@@ -23,7 +23,6 @@ use game::physics_coords_to_block_coords;
 use game::CSCamera;
 use game::CSFlipperImp;
 use game::FieldArea;
-use game::FreecamMode;
 use game::MoveMapStep;
 use game::WorldChrMan;
 use glam::Mat3;
