@@ -2,7 +2,7 @@ use dll_syringe::{process::OwnedProcess, Syringe};
 use futures::channel::oneshot;
 use futures::{pin_mut, select, FutureExt};
 use protocol::keyframe::Keyframe;
-use protocol::{CameraMode, CameraState, InboundGameControlEvent, OutboundGameControlEvent, RemoteError, SettingsData};
+use protocol::{CameraMode, CameraState, InboundGameControlEvent, OutboundGameControlEvent, PlaybackSettingsData, RemoteError, SettingsData};
 use smol::Timer;
 use std::sync::mpsc;
 use std::{
@@ -159,8 +159,8 @@ impl RemoteGame {
         self.post_event(InboundGameControlEvent::SetDebugPauseEnabled { enabled })
     }
 
-    pub fn set_time_of_day(&self, hours: u8, minutes: u8, seconds: u8) -> Result<(), RemoteError> {
-        self.post_event(InboundGameControlEvent::SetTimeOfDay { hours, minutes, seconds })
+    pub fn set_time_of_day(&self, hours: u8, minutes: u8) -> Result<(), RemoteError> {
+        self.post_event(InboundGameControlEvent::SetTimeOfDay { hours, minutes })
     }
 
     pub fn set_character_no_dead(&self, enabled: bool) -> Result<(), RemoteError> {
@@ -189,6 +189,10 @@ impl RemoteGame {
 
     pub fn set_freecam_fov(&self, fov: f32) -> Result<(), RemoteError> {
         self.post_event(InboundGameControlEvent::SetFreecamFov { fov })
+    }
+
+    pub fn set_playback_settings(&self, settings: PlaybackSettingsData) -> Result<(), RemoteError> {
+        self.post_event(InboundGameControlEvent::SetPlaybackSettings { settings })
     }
 
     fn post_event(&self, event: InboundGameControlEvent) -> Result<(), RemoteError> {

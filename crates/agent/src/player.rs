@@ -12,8 +12,8 @@ pub struct Player {
 
 impl Default for Player {
     fn default() -> Self {
+        let offsets = get_offsets().map_err(|e| e.clone()).unwrap();
         let program = Program::current();
-        let offsets = get_offsets(&program).map_err(|e| e.clone()).unwrap();
         let no_dead_va = program.rva_to_va(offsets.no_dead_flag).unwrap();
 
         Self {

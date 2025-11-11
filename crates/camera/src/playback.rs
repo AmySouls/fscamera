@@ -1,6 +1,6 @@
-use crate::{Camera, Space};
+use crate::Camera;
 use protocol::keyframe::Keyframe;
-use glam::{Vec3, Quat};
+use glam::{Mat3, Quat, Vec3};
 
 /// Camera that can play a path made up of keyframes by smoothly interpolating between them.
 pub struct PlaybackCam {
@@ -14,7 +14,7 @@ pub struct PlaybackCam {
 }
 
 impl PlaybackCam {
-    pub fn new(space: Space, translation: Vec3, orientation: Quat, fov: f32) -> Self {
+    pub fn new(space: Mat3, translation: Vec3, orientation: Quat, fov: f32) -> Self {
         Self {
             camera: Camera::new(space, translation, orientation, fov),
             playing: false,
@@ -46,6 +46,10 @@ impl PlaybackCam {
         self.camera.translation = frame.translation;
         self.camera.rotation = frame.rotation;
         self.camera.fov = frame.fov;
+    }
+
+    pub fn playback_frame(&self) -> PlaybackFrame {
+        interpolate_frame(&self.keyframes, self.time)
     }
 }
 
@@ -190,27 +194,6 @@ fn pos_tcb_hermite(
     h00 * p1 + h10 * (m1_out * h) + h01 * p2 + h11 * (m2_in * h)
 }
 
-fn slerp_stable(q_from: Quat, q_to: Quat, t: f32) -> Quat {
-    let qf = q_from.normalize();
-    let qt = q_to.normalize();
-
-    let delta = qf.conjugate() * qt;
-    let v = delta.xyz();
-    let w = delta.w;
-
-    // Angle in [0, PI]
-    let v_len = v.length();
-    let angle = 2.0 * v_len.atan2(w);
-
-    if angle < 1e-6 {
-        return (qf * (1.0 - t) + qt * t).normalize();
-    }
-
-    let axis = if v_len > 1e-8 { v / v_len } else { Vec3::X };
-
-    qf * Quat::from_axis_angle(axis, angle * t)
-}
-
 fn find_segment(frames: &[Keyframe], t: f32) -> (usize, usize) {
     // If t is before the first keyframe, use the first two.
     if t <= frames[0].time { return (0, 1); }
@@ -229,21 +212,6 @@ fn find_segment(frames: &[Keyframe], t: f32) -> (usize, usize) {
     (lo, hi)
 }
 
-fn catmull_rom_centripetal_vec3(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, u01: f32) -> Vec3 {
-    let (t0, t1, t2, t3) = chord_params_vec3(p0, p1, p2, p3);
-
-    // Map u in [0,1] to the inner interval [t1, t2]
-    let t = lerp_f32(t1, t2, u01);
-    let a1 = lerp_vec3(p0, p1, (t - t0) / (t1 - t0).max(1e-6));
-    let a2 = lerp_vec3(p1, p2, (t - t1) / (t2 - t1).max(1e-6));
-    let a3 = lerp_vec3(p2, p3, (t - t2) / (t3 - t2).max(1e-6));
-
-    let b1 = lerp_vec3(a1, a2, (t - t0) / (t2 - t0).max(1e-6));
-    let b2 = lerp_vec3(a2, a3, (t - t1) / (t3 - t1).max(1e-6));
-
-    lerp_vec3(b1, b2, (t - t1) / (t2 - t1).max(1e-6))
-}
-
 fn catmull_rom_centripetal_scalar(p0: f32, p1: f32, p2: f32, p3: f32, u01: f32) -> f32 {
     let (t0, t1, t2, t3) = chord_params_scalar(p0, p1, p2, p3);
     let t = lerp_f32(t1, t2, u01);
@@ -258,15 +226,6 @@ fn catmull_rom_centripetal_scalar(p0: f32, p1: f32, p2: f32, p3: f32, u01: f32) 
     lerp_f32(b1, b2, (t - t1) / (t2 - t1).max(1e-6))
 }
 
-fn chord_params_vec3(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3) -> (f32, f32, f32, f32) {
-    let alpha = 0.5;
-    let t0 = 0.0;
-    let t1 = t0 + (p1 - p0).length().sqrt().powf(alpha);
-    let t2 = t1 + (p2 - p1).length().sqrt().powf(alpha);
-    let t3 = t2 + (p3 - p2).length().sqrt().powf(alpha);
-    (t0, t1.max(t0 + 1e-6), t2.max(t1 + 1e-6), t3.max(t2 + 1e-6))
-}
-
 fn chord_params_scalar(p0: f32, p1: f32, p2: f32, p3: f32) -> (f32, f32, f32, f32) {
     let alpha = 0.5;
     let t0 = 0.0;
@@ -274,11 +233,6 @@ fn chord_params_scalar(p0: f32, p1: f32, p2: f32, p3: f32) -> (f32, f32, f32, f3
     let t2 = t1 + (p2 - p1).abs().sqrt().powf(alpha);
     let t3 = t2 + (p3 - p2).abs().sqrt().powf(alpha);
     (t0, (t1.max(t0 + 1e-6)), (t2.max(t1 + 1e-6)), (t3.max(t2 + 1e-6)))
-}
-
-#[inline]
-fn lerp_vec3(a: Vec3, b: Vec3, t: f32) -> Vec3 {
-    a + (b - a) * t
 }
 
 #[inline]

@@ -1,4 +1,4 @@
-use crate::{Camera, Space};
+use crate::Camera;
 use glam::{Mat3, Quat, Vec2, Vec3};
 
 pub struct FreeCamInput {
@@ -63,7 +63,7 @@ pub struct FreeCam {
 
 impl FreeCam {
     pub fn new(
-        space: Space,
+        space: Mat3,
         translation: Vec3,
         level_orientation: Quat,
         roll: f32,
@@ -114,10 +114,11 @@ impl FreeCam {
                     * self.rotation_speed
                     * self.rotation_speed_modifier;
 
-                let q_yaw = Quat::from_axis_angle(self.camera.space.up, dx);
+                let q_yaw = Quat::from_axis_angle(self.camera.space.y_axis, dx);
                 self.target_level_rotation = (q_yaw * self.target_level_rotation).normalize();
 
-                let right = (Mat3::from_quat(self.target_level_rotation) * self.camera.space.right)
+                let right = (Mat3::from_quat(self.target_level_rotation)
+                    * self.camera.space.x_axis)
                     .normalize();
                 let q_pitch = Quat::from_axis_angle(right, dy);
                 self.target_level_rotation = (q_pitch * self.target_level_rotation).normalize();
@@ -138,9 +139,9 @@ impl FreeCam {
 
             // Figure up directions for camera positional movement
             let rot3 = Mat3::from_quat(self.camera.rotation);
-            let forward = rot3 * self.camera.space.forward;
-            let right = rot3 * self.camera.space.right;
-            let up = rot3 * self.camera.space.up;
+            let right = rot3 * self.camera.space.x_axis;
+            let up = rot3 * self.camera.space.y_axis;
+            let forward = rot3 * self.camera.space.z_axis;
 
             let mut velocity = Vec3::ZERO;
             velocity += forward * input.forward;
@@ -165,8 +166,7 @@ impl FreeCam {
         let a_roll = Self::exp_alpha(delta, self.roll_smooth_time);
         self.roll_angle = self.roll_angle + (self.target_roll_angle - self.roll_angle) * a_roll;
 
-        let forward =
-            (Mat3::from_quat(self.level_rotation) * self.camera.space.forward).normalize();
+        let forward = (Mat3::from_quat(self.level_rotation) * self.camera.space.z_axis).normalize();
         let roll_rotation = Quat::from_axis_angle(forward, self.roll_angle);
         self.camera.rotation = (roll_rotation * self.level_rotation).normalize();
 

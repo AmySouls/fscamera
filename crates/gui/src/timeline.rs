@@ -1,6 +1,6 @@
 use eframe::egui::{Align, Align2, Color32, DragValue, FontId, Key, Layout, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2};
 use egui_notify::Toasts;
-use protocol::{RemoteError, SettingsData, keyframe::{Keyframe, Quat, Vec3}};
+use protocol::{RemoteError, keyframe::{Keyframe, Quat, Vec3}};
 
 use crate::{controls::drag_fov, game::RemoteGame};
 
@@ -14,8 +14,6 @@ pub struct TimelineControl {
     time: f32,
     path_duration: f32,
     last_update: Option<std::time::Instant>,
-
-    equally_space_keyframes: bool,
 }
 
 pub enum TimelineControlCommand {
@@ -33,7 +31,6 @@ impl TimelineControl {
             time: 0.0,
             path_duration: 30.0,
             last_update: None,
-            equally_space_keyframes: true,
         }
     }
 
@@ -42,7 +39,6 @@ impl TimelineControl {
         ui: &mut Ui,
         remote: &RemoteGame,
         notify: &mut Toasts,
-        settings: &SettingsData,
     ) -> Option<TimelineControlCommand> {
         let mut result = None;
 
@@ -77,7 +73,7 @@ impl TimelineControl {
 
             ui.horizontal(|ui| {
                 if ui.button("➕ Add Keyframe").clicked() {
-                    if let Err(e) = self.create_keyframe(remote, settings) {
+                    if let Err(e) = self.create_keyframe(remote) {
                         notify.error(format!("Could not create new keyframe: {e}"));
                     } else {
                         flush_keyframes = true;
@@ -88,20 +84,13 @@ impl TimelineControl {
                     if ui.button("❌ Delete Keyframe").clicked() {
                         self.keyframes.remove(self.selected_index.take().unwrap());
 
-                        if self.equally_space_keyframes {
-                            self.spread_frames();
-                        }
+                        self.spread_frames();
 
                         if !self.keyframes.is_empty() {
                             self.selected_index = Some(self.keyframes.len() - 1);
                         }
                     }
                 });
-
-                ui.checkbox(
-                    &mut self.equally_space_keyframes,
-                    "Equally space created frames",
-                );
 
                 let original_path_duration = self.path_duration;
                 ui.with_layout(
@@ -114,10 +103,8 @@ impl TimelineControl {
                                 .suffix("s")
                                 .range(1.00..=240.0),
                             ).changed() {
-                                if self.equally_space_keyframes {
-                                    self.spread_frames();
-                                    flush_keyframes = true;
-                                }
+                                self.spread_frames();
+                                flush_keyframes = true;
 
                                 // Correct playback time to remain at the same point relative to the keyframes.
                                 let ratio = self.path_duration / original_path_duration;
@@ -380,7 +367,6 @@ impl TimelineControl {
     pub fn create_keyframe(
         &mut self,
         remote: &RemoteGame,
-        settings: &SettingsData,
     ) -> Result<(), RemoteError> {
         let camera_state = remote.snapshot_camera_state()?;
         let pos = camera_state.position;
@@ -388,31 +374,16 @@ impl TimelineControl {
 
         let mut kf = Keyframe {
             time: 0.0,
-            map_id: camera_state.map_id,
             position: Vec3::new(pos.x, pos.y, pos.z),
             orientation: Quat(rot.0, rot.1, rot.2, rot.3),
             fov: camera_state.fov,
         };
 
-        if let Some(selected) = self.selected_index {
-            kf.time = self.keyframes[selected].time + settings.time_between_created_keyframes;
-        };
-
-        // if self.place_keyframes_at_time {
-        //     kf.time = self.time;
-        // }
-
-        if self.equally_space_keyframes {
-            // Assign temp time to ensure we get sorted as last entry.
-            kf.time = f32::MAX;
-        }
-
+        // Assign temp time to ensure we get sorted as last entry.
+        kf.time = f32::MAX;
         self.keyframes.push(kf);
         self.selected_index = Some(self.keyframes.len() - 1);
-
-        if self.equally_space_keyframes {
-            self.spread_frames();
-        }
+        self.spread_frames();
 
         Ok(())
     }

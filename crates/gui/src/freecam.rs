@@ -63,14 +63,8 @@ impl FreeCamControl {
                 });
 
                 labeled_control(ui, "Rotation speed", |ui| {
-                    if drag_percentage(
-                        ui,
-                        "",
-                        &mut self.rotation_speed,
-                        true,
-                    )
-                        .changed()
-                            && let Err(e) = remote.set_freecam_rotation_speed(self.rotation_speed)
+                    if drag_percentage(ui, "", &mut self.rotation_speed, true).changed()
+                        && let Err(e) = remote.set_freecam_rotation_speed(self.rotation_speed)
                     {
                         notify.error(format!("Could not change freecam rotation speed: {e}"));
                     }

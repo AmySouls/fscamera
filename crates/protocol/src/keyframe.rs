@@ -25,7 +25,6 @@ impl Quat {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Keyframe {
     pub time: f32,
-    pub map_id: i32,
     pub position: Vec3,
     pub orientation: Quat,
     pub fov: f32,

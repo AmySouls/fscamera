@@ -4,7 +4,7 @@ use protocol::{
     OutboundGameControlEvent,
 };
 
-use crate::{input::Input, OUTBOUND_EVENT_QUEUE};
+use crate::{OUTBOUND_EVENT_QUEUE, input::Input};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Keybinds {
@@ -20,7 +20,10 @@ impl Keybinds {
         self.mapping = mapping;
     }
 
-    pub fn execute_general_bindings(&self, input: &mut Input) {
+    pub fn execute_general_bindings(
+        &self,
+        input: &mut Input,
+    ) {
         Self::execute_bindings(
             input,
             &[

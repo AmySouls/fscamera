@@ -7,18 +7,17 @@ use std::time::Instant;
 use camera::freecam::FreeCam;
 use camera::playback::PlaybackCam;
 use camera::Camera;
-use camera::Space;
 use crossbeam::queue::SegQueue;
 use eldenring::cs::CSPersCam;
 use eldenring::cs::CSTaskGroupIndex;
 use eldenring::cs::CSTaskImp;
 use eldenring::fd4::FD4TaskData;
+use fromsoft_shared::F32Matrix4x4;
 use fromsoft_shared::F32Vector4;
 use fromsoft_shared::{arxan, get_instance, OwnedPtr, Program, SharedTaskImpExt};
 use game::get_offsets;
 use game::CSCamera;
 use game::CSFlipperImp;
-use game::FieldArea;
 use game::MoveMapStep;
 use game::WorldChrMan;
 use glam::Mat3;
@@ -31,9 +30,11 @@ use log4rs::{
     Config,
 };
 use pelite::pe64::Pe;
+use protocol::AgentState;
 use protocol::CameraMode;
 use protocol::InboundGameControlEvent;
 use protocol::OutboundGameControlEvent;
+use protocol::PlaybackSettingsData;
 use protocol::{CameraState, RemoteError, SettingsData};
 
 use retour::static_detour;
@@ -50,33 +51,22 @@ mod input;
 mod keybind;
 mod player;
 
+const SPACE: Mat3 = Mat3::from_cols(
+    Vec3::X,
+    Vec3::Y,
+    Vec3::Z,
+);
+
 dll_syringe::payload_procedure! {
     fn snapshot_camera_state() -> Result<CameraState, RemoteError> {
         unsafe {
-            let program = Program::current();
-            let offsets = get_offsets(&program).map_err(|e| e.clone())?;
-
             let Some(cs_camera) = get_instance::<CSCamera>() else {
                 return Err(RemoteError::AcquireCSCamera);
             };
 
-            let field_area = transmute::<u64, OwnedPtr<Option<OwnedPtr<FieldArea>>>>(program.rva_to_va(offsets.field_area).unwrap());
-            let Some(field_area) = field_area.as_ref() else {
-                return Err(RemoteError::AcquireFieldArea)
-            };
-
-            let field_area = field_area.as_ref();
-            let map_id = field_area.map_id;
-
             let position = cs_camera.pers_cam_1.position();
-            // let Some(position) = physics_coords_to_block_coords(field_area, &map_id, &position) else {
-            //     return Err(RemoteError::AcquireWorldBlockInfo);
-            // };
+            let F32Matrix4x4(rx, ry, rz, _) = cs_camera.pers_cam_1.matrix;
 
-            let matrix = &cs_camera.pers_cam_1.matrix;
-            let rx = matrix.0;
-            let ry = matrix.1;
-            let rz = matrix.2;
             let rot = glam::Mat3::from_cols(
                 glam::Vec3::new(rx.0, rx.1, rx.2),
                 glam::Vec3::new(ry.0, ry.1, ry.2),
@@ -85,7 +75,6 @@ dll_syringe::payload_procedure! {
             let [qx, qy, qz, qw] = glam::Quat::from_mat3(&rot).to_array();
 
             Ok(CameraState {
-                map_id: map_id.0,
                 position: protocol::keyframe::Vec3::new(
                     position.0,
                     position.1,
@@ -95,6 +84,18 @@ dll_syringe::payload_procedure! {
                 fov: cs_camera.pers_cam_1.fov,
             })
         }
+    }
+}
+
+dll_syringe::payload_procedure! {
+    fn get_agent_state() -> Result<AgentState, RemoteError> {
+        Ok(AgentState {
+            camera_mode: CameraMode::Playback,
+            gamespeed_enabled: GAMESPEED_ENABLED.load(Ordering::Relaxed),
+            debug_pause_enabled: DEBUG_PAUSE_ENABLED.load(Ordering::Relaxed),
+            hud_disabled: DISABLE_HUD.load(Ordering::Relaxed),
+            freecam_locked: FREECAM_LOCKED.load(Ordering::Relaxed),
+        })
     }
 }
 
@@ -120,8 +121,8 @@ dll_syringe::payload_procedure! {
 dll_syringe::payload_procedure! {
     // TODO: clean me up please
     fn initialize(settings: SettingsData) -> Result<(), RemoteError> {
+        let offsets = get_offsets().map_err(|e| e.clone())?;
         let program = Program::current();
-        let offsets = get_offsets(&program).map_err(|e| e.clone())?;
 
         if INITIALIZED.compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed).is_err() {
             INBOUND_EVENT_QUEUE.push(InboundGameControlEvent::Initialize { settings });
@@ -153,26 +154,21 @@ dll_syringe::payload_procedure! {
         // by the game.
         let mut last_update = Instant::now();
 
-        let space = Space {
-            right: glam::Vec3::X,
-            up: glam::Vec3::Y,
-            forward: glam::Vec3::Z,
-        };
-
         let mut camera_mode = CameraMode::Game;
         let mut freecam = FreeCam::new(
-            space.clone(),
+            SPACE.clone(),
             glam::Vec3::ZERO,
             glam::Quat::IDENTITY,
             0.0,
             48.0f32.to_radians(),
         );
         let mut playback = PlaybackCam::new(
-            space,
+            SPACE.clone(),
             glam::Vec3::ZERO,
             glam::Quat::IDENTITY,
             48.0f32.to_radians(),
         );
+        let mut playback_settings = PlaybackSettingsData::default();
         let mut player = Player::default();
         let mut gamespeed = GameSpeed::default();
 
@@ -189,13 +185,6 @@ dll_syringe::payload_procedure! {
                 last_update = now;
 
                 // Acquire a pile of shit from the game we can't really live without.
-
-                // We need FieldArea to translate coordinates from havok space (where the cam lives) to
-                // block space as havok space shifts around a lot making it unusable for persisting
-                // coordinates with.
-                let field_area = unsafe {
-                    transmute::<u64, OwnedPtr<Option<OwnedPtr<FieldArea>>>>(program.rva_to_va(offsets.field_area).unwrap())
-                };
 
                 // Camera's isn't necessarily there and we've got nothing to do in such a situation.
                 let cs_camera = unsafe { get_instance::<CSCamera>() };
@@ -218,6 +207,9 @@ dll_syringe::payload_procedure! {
                     return;
                 };
 
+                gamespeed.set_playback_multiplier_enabled(
+                    playback_settings.gamespeed_enabled_on_playback && camera_mode == CameraMode::Playback
+                );
                 gamespeed.apply(flipper);
 
                 // Update input state for reading.
@@ -264,6 +256,7 @@ dll_syringe::payload_procedure! {
                         &mut camera_mode,
                         &mut freecam,
                         &mut playback,
+                        &mut playback_settings,
                         &mut player,
                         &mut gamespeed,
                     );
@@ -286,7 +279,7 @@ dll_syringe::payload_procedure! {
         unsafe {
             MOVE_MAP_STEP
                 .initialize(
-                    std::mem::transmute::<u64, unsafe extern "C" fn(OwnedPtr<MoveMapStep>, usize)>(move_map_step_hook_va),
+                    transmute::<u64, unsafe extern "C" fn(OwnedPtr<MoveMapStep>, usize)>(move_map_step_hook_va),
                     |mut move_map_step, delta| {
                         // This flag indicates if the debug timestop is active, we should only
                         // enable it when the freecam mode has been set appropriately
@@ -325,6 +318,7 @@ fn handle_gui_message(
     camera_mode: &mut CameraMode,
     freecam: &mut FreeCam,
     playback: &mut PlaybackCam,
+    playback_settings: &mut PlaybackSettingsData,
     player: &mut Player,
     gamespeed: &mut GameSpeed,
 ) {
@@ -335,11 +329,7 @@ fn handle_gui_message(
         InboundGameControlEvent::Settings { settings } => {
             keybinds.set_mapping(settings.keybinds);
         }
-        InboundGameControlEvent::SetTimeOfDay {
-            hours,
-            minutes,
-            seconds,
-        } => {
+        InboundGameControlEvent::SetTimeOfDay { hours, minutes } => {
             let world_area_time = unsafe { get_instance::<WorldAreaTime>() };
             let Some(world_area_time) = world_area_time else {
                 return;
@@ -347,7 +337,7 @@ fn handle_gui_message(
 
             world_area_time.request_hour = hours as _;
             world_area_time.request_minute = minutes as _;
-            world_area_time.request_second = seconds as _;
+            world_area_time.request_second = 0;
         }
         InboundGameControlEvent::SetCharacterNoDead { enabled } => player.no_dead = enabled,
         InboundGameControlEvent::SetCharacterNoMove { enabled } => player.no_move = enabled,
@@ -368,6 +358,10 @@ fn handle_gui_message(
                     OUTBOUND_EVENT_QUEUE.push(OutboundGameControlEvent::UpdateFreecamFov { fov });
                 }
                 CameraMode::Playback => {
+                    if playback_settings.unpause_on_playback {
+                        DEBUG_PAUSE_ENABLED.store(false, Ordering::Relaxed);
+                    }
+
                     input.block_input(InputBlockMode::None);
                 }
             }
@@ -390,7 +384,7 @@ fn handle_gui_message(
             DEBUG_PAUSE_ENABLED.store(enabled, Ordering::Relaxed)
         }
         InboundGameControlEvent::SetFreecamLocked { locked } => {
-            freecam.locked = locked;
+            FREECAM_LOCKED.store(locked, Ordering::Relaxed);
         }
         InboundGameControlEvent::SetGameSpeedMultiplier { value } => {
             gamespeed.set_multiplier(value);
@@ -405,10 +399,27 @@ fn handle_gui_message(
             playback.playing = playing;
             playback.time = time;
 
+            let cs_camera = unsafe { get_instance::<CSCamera>() };
+            let Some(cs_camera) = cs_camera else {
+                return;
+            };
+
             if *camera_mode != CameraMode::Playback {
                 input.block_input(InputBlockMode::None);
                 *camera_mode = CameraMode::Playback;
+
+                if playback_settings.unpause_on_playback {
+                    DEBUG_PAUSE_ENABLED.store(false, Ordering::Relaxed);
+                }
+            } else if *camera_mode == CameraMode::Playback && playing == false {
+                input.block_input(InputBlockMode::KeyboardAndMouse);
+                *camera_mode = CameraMode::Freecam;
+                *freecam = freecam_from_game_camera(&cs_camera.pers_cam_1);
             }
+        }
+        InboundGameControlEvent::SetPlaybackSettings { settings } => {
+            gamespeed.set_playback_multiplier(settings.gamespeed_multiplier);
+            *playback_settings = settings;
         }
     }
 }
@@ -434,11 +445,7 @@ fn freecam_from_game_camera(camera: &CSPersCam) -> FreeCam {
     let level_orientation = glam::Quat::from_euler(glam::EulerRot::YXZ, yaw, pitch, 0.0);
 
     FreeCam::new(
-        Space {
-            right: Vec3::X,
-            up: Vec3::Y,
-            forward: Vec3::Z,
-        },
+        SPACE.clone(),
         Vec3::new(rw.0, rw.1, rw.2),
         level_orientation,
         roll,
@@ -458,33 +465,16 @@ fn apply_camera_to_game_camera(camera: &Camera, game_camera: &mut CSPersCam) {
     game_camera.fov = camera.fov;
 }
 
-fn fixup_keyframe_positions(
-    frames: &[protocol::keyframe::Keyframe],
-) -> Vec<protocol::keyframe::Keyframe> {
-    frames
-        .iter()
-        .map(|f| {
-            /// Keyframe positions are MSB space, so we'll need to
-            let position = f.position;
-
-            protocol::keyframe::Keyframe {
-                time: f.time,
-                map_id: f.map_id,
-                position,
-                orientation: f.orientation,
-                fov: f.fov,
-            }
-        })
-        .collect()
-}
-
 static_detour! {
     static MOVE_MAP_STEP: unsafe extern "C" fn(OwnedPtr<MoveMapStep>, usize);
     static SCALEFORM_UPDATE_B: unsafe extern "C" fn(usize, usize);
 }
 
+static FREECAM_LOCKED: AtomicBool = AtomicBool::new(false);
 static DISABLE_HUD: AtomicBool = AtomicBool::new(false);
 static DEBUG_PAUSE_ENABLED: AtomicBool = AtomicBool::new(false);
+static GAMESPEED_ENABLED: AtomicBool = AtomicBool::new(false);
+
 static LOG_HANDLE: OnceLock<log4rs::Handle> = OnceLock::new();
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 static INBOUND_EVENT_QUEUE: SegQueue<InboundGameControlEvent> = SegQueue::new();

@@ -13,15 +13,15 @@ use windows::Win32::System::LibraryLoader::GetProcAddress;
 use windows::Win32::UI::Input::HRAWINPUT;
 use windows::Win32::UI::Input::RAWINPUT;
 use windows::Win32::UI::Input::RID_INPUT;
-use windows::Win32::UI::Input::RIM_TYPEMOUSE;
 use windows::Win32::UI::Input::RIM_TYPEKEYBOARD;
+use windows::Win32::UI::Input::RIM_TYPEMOUSE;
 use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 
 enum InputEvent {
     MouseDelta(i32, i32),
     MouseWheel(i16),
-    KeyDown { key: u16 },
-    KeyUp { key: u16 },
+    // KeyDown { key: u16 },
+    // KeyUp { key: u16 },
 }
 
 #[derive(Debug, Default)]
@@ -42,7 +42,7 @@ pub struct Input {
     keyup: [bool; KEYSPACE_SIZE],
 }
 
-const KEYSPACE_SIZE: usize = 0xFF;
+const KEYSPACE_SIZE: usize = 256;
 const RI_MOUSE_WHEEL: u16 = 0x0400;
 
 impl Default for Input {
@@ -86,25 +86,43 @@ impl Input {
         self.keydown.fill(false);
         self.keyup.fill(false);
 
+        // Drain events even when inputs are posted while the game isn't focussed.
         if !is_game_focussed() {
-            // Drain events
-            while let Some(event) = INPUT_EVENTS.pop() {}
+            while let Some(_event) = INPUT_EVENTS.pop() {}
             self.keypress.fill(false);
             return;
         }
 
+
+        let mut kbd = [0u8; 256];
+        unsafe {
+            let _ = GetKeyboardState(&mut kbd);
+        }
+        let prev = self.keypress;
+
+        // Explicitly read the keyboard state as the GetRawInputData isn't consistently called when
+        // the gamespeed is active.
+        for i in 0..KEYSPACE_SIZE {
+            let down_now = (kbd[i] & 0x80) != 0;
+            let down_prev = prev[i];
+
+            self.keypress[i] = down_now;
+            self.keydown[i] = down_now && !down_prev;
+            self.keyup[i] = !down_now && down_prev;
+        }
+
         while let Some(event) = INPUT_EVENTS.pop() {
             match event {
-                InputEvent::KeyDown { key } => {
-                    self.keyup[key as usize] = false;
-                    self.keydown[key as usize] = true;
-                    self.keypress[key as usize] = true;
-                }
-                InputEvent::KeyUp { key } => {
-                    self.keyup[key as usize] = true;
-                    self.keydown[key as usize] = false;
-                    self.keypress[key as usize] = false;
-                }
+                // InputEvent::KeyDown { key } => {
+                //     // self.keyup[key as usize] = false;
+                //     // self.keydown[key as usize] = true;
+                //     // self.keypress[key as usize] = true;
+                // }
+                // InputEvent::KeyUp { key } => {
+                //     // self.keyup[key as usize] = true;
+                //     // self.keydown[key as usize] = false;
+                //     // self.keypress[key as usize] = false;
+                // }
                 InputEvent::MouseDelta(x, y) => {
                     self.orientation_delta = (
                         self.orientation_delta.0 + x as f32,
@@ -179,29 +197,29 @@ pub unsafe fn setup_hook() {
 
                             INPUT_EVENTS.push(InputEvent::MouseDelta(mouse.lLastX, mouse.lLastY));
 
-                            let flags = unsafe { mouse.Anonymous.Anonymous.usButtonFlags };
-                            if (flags & RI_MOUSE_WHEEL) != 0 {
-                                let delta =
-                                    unsafe { mouse.Anonymous.Anonymous.usButtonData as i16 };
+                            let flags = mouse.Anonymous.Anonymous.usButtonFlags;
+                            if flags & RI_MOUSE_WHEEL != 0 {
+                                let delta = mouse.Anonymous.Anonymous.usButtonData as i16;
                                 INPUT_EVENTS.push(InputEvent::MouseWheel(delta));
                             }
 
                             // if (flags & RI_MOUSE_HWHEEL.0) != 0 {
-                            //     let delta = unsafe { mouse.Anonymous.Anonymous.usButtonData as i16 };
+                            //     let delta = mouse.Anonymous.Anonymous.usButtonData as i16;
                             //     INPUT_EVENTS.push(InputEvent::MouseHWheel(delta));
                             // }
-                        } else if ri.header.dwType == RIM_TYPEKEYBOARD.0 {
+                        }
+                        else if ri.header.dwType == RIM_TYPEKEYBOARD.0 {
                             let kbd = ri.data.keyboard;
 
-                            // Decide up/down via RI_KEY_BREAK (works for KEYDOWN and SYSKEYDOWN)
-                            let is_break = (kbd.Flags & RI_KEY_BREAK as u16) != 0;
+                            // // Decide up/down via RI_KEY_BREAK (works for KEYDOWN and SYSKEYDOWN)
+                            // let is_break = kbd.Flags & RI_KEY_BREAK as u16 != 0;
                             let key = normalize_vk(kbd.VKey, kbd.MakeCode, kbd.Flags);
-
-                            if !is_break {
-                                INPUT_EVENTS.push(InputEvent::KeyDown { key });
-                            } else {
-                                INPUT_EVENTS.push(InputEvent::KeyUp { key });
-                            }
+                            //
+                            // if !is_break {
+                            //     INPUT_EVENTS.push(InputEvent::KeyDown { key });
+                            // } else {
+                            //     INPUT_EVENTS.push(InputEvent::KeyUp { key });
+                            // }
 
                             // Do not filter escape
                             if key == 0x1B {
@@ -232,20 +250,19 @@ pub fn is_game_focussed() -> bool {
 }
 
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyboardLayout, MapVirtualKeyExW, MAPVK_VSC_TO_VK_EX, VK_CONTROL, VK_LCONTROL, VK_LMENU,
-    VK_LSHIFT, VK_MENU, VK_RCONTROL, VK_RMENU, VK_SHIFT,
+    GetKeyboardLayout, GetKeyboardState, MAPVK_VSC_TO_VK_EX, MapVirtualKeyExW, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_MENU, VK_RCONTROL, VK_RMENU, VK_SHIFT
 };
-use windows::Win32::UI::WindowsAndMessaging::{RI_KEY_BREAK, RI_KEY_E0, RI_KEY_E1};
+use windows::Win32::UI::WindowsAndMessaging::{RI_KEY_E0, RI_KEY_E1};
 
 #[inline]
 fn normalize_vk(vkey: u16, make_code: u16, flags: u16) -> u16 {
     // Refine VK using scan code + extended flag to get L/R variants.
     let hkl = unsafe { GetKeyboardLayout(0) };
     let mut sc = make_code as u32;
-    if (flags & RI_KEY_E0 as u16) != 0 {
+    if flags & RI_KEY_E0 as u16 != 0 {
         sc |= 0xE000;
     }
-    if (flags & RI_KEY_E1 as u16) != 0 {
+    if flags & RI_KEY_E1 as u16 != 0 {
         sc |= 0xE100;
     }
     let mapped = unsafe { MapVirtualKeyExW(sc, MAPVK_VSC_TO_VK_EX, Some(hkl)) } as u16;
@@ -259,14 +276,14 @@ fn normalize_vk(vkey: u16, make_code: u16, flags: u16) -> u16 {
             }
         }
         x if x == VK_CONTROL.0 => {
-            if (flags & RI_KEY_E0 as u16) != 0 {
+            if flags & RI_KEY_E0 as u16 != 0 {
                 VK_RCONTROL.0
             } else {
                 VK_LCONTROL.0
             }
         }
         x if x == VK_MENU.0 => {
-            if (flags & RI_KEY_E0 as u16) != 0 {
+            if flags & RI_KEY_E0 as u16 != 0 {
                 VK_RMENU.0
             } else {
                 VK_LMENU.0

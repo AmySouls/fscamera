@@ -60,7 +60,6 @@ impl WorldControl {
                 ).changed() && let Err(e) = remote.set_time_of_day(
                     hours as u8,
                     mins as u8,
-                    0
                 ) {
                     notify.error(format!("Could not set time of day: {e}"));
                 }

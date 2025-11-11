@@ -1,13 +1,15 @@
 use crate::freecam::FreeCamControl;
 use crate::game::RemoteGame;
+use crate::playback::PlaybackControl;
 use crate::process::{self, GameProcess};
 use crate::program_title;
 use crate::settings::{SettingsControl, get_settings, save_settings};
 use crate::timeline::{TimelineControl, TimelineControlCommand};
 use crate::world::WorldControl;
 use eframe::egui::{
-    self, Align, CentralPanel, ComboBox, Context, Layout, TopBottomPanel, Visuals
+    self, Align, CentralPanel, ComboBox, Context, Image, Layout, TopBottomPanel, Vec2, Visuals
 };
+use egui_extras::install_image_loaders;
 use egui_notify::Toasts;
 use protocol::{CameraMode, OutboundGameControlEvent};
 
@@ -27,6 +29,7 @@ pub(crate) struct CameraControlApp {
     freecam_control: FreeCamControl,
     world_control: WorldControl,
     timeline_control: TimelineControl,
+    playback_control: PlaybackControl,
 }
 
 impl Default for CameraControlApp {
@@ -40,6 +43,7 @@ impl Default for CameraControlApp {
             world_control: WorldControl::default(),
             timeline_control: TimelineControl::new(),
             settings_control: SettingsControl::new(settings),
+            playback_control: PlaybackControl::default(),
 
             process: None,
             remote: None,
@@ -54,6 +58,7 @@ impl Default for CameraControlApp {
 
 impl eframe::App for CameraControlApp {
     fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        install_image_loaders(ctx);
         ctx.set_visuals(Visuals::dark());
 
         if self.settings_open {
@@ -88,7 +93,7 @@ impl CameraControlApp {
 
         match event {
             OutboundGameControlEvent::CreateKeyframe => {
-                if let Err(e) = self.timeline_control.create_keyframe(remote, self.settings_control.data()) {
+                if let Err(e) = self.timeline_control.create_keyframe(remote) {
                     self.notify.error(format!("Could not create keyframe: {e}"));
                 }
 
@@ -156,45 +161,52 @@ impl CameraControlApp {
 
     fn update_game_selector(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         CentralPanel::default().show(ctx, |ui| {
-            ui.heading(program_title());
+            ui.horizontal_centered(|ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add(
+                        Image::new(egui::include_image!("logo.gif"))
+                            .max_size(Vec2::new(347.0, 89.0))
+                    );
 
-            ComboBox::from_label("Game process")
-                .selected_text(
-                    self.process
-                        .as_ref()
-                        .map(|p| p.to_string())
-                        .unwrap_or(String::from("No process selected")),
-                )
-                .show_ui(ui, |ui| {
-                    process::get_running_games()
-                        .iter()
-                        .for_each(|e| {
-                            ui.selectable_value(&mut self.process, Some(e.clone()), e.to_string());
-                        })
+                    ComboBox::from_label("Game process")
+                        .selected_text(
+                            self.process
+                                .as_ref()
+                                .map(|p| p.to_string())
+                                .unwrap_or(String::from("No process selected")),
+                        )
+                        .show_ui(ui, |ui| {
+                            process::get_running_games()
+                                .iter()
+                                .for_each(|e| {
+                                    ui.selectable_value(&mut self.process, Some(e.clone()), e.to_string());
+                                })
+                        });
+
+                    ui.add_enabled_ui(self.process.is_some(), |ui| {
+                        if ui.button("Attach to game").clicked()
+                            && let Some(process) = self.process.as_ref() {
+
+                                let Ok(remote) = RemoteGame::connect(process) else {
+                                    self.notify.error("Failed attaching to game.");
+                                    return;
+                                };
+
+                                if remote.initialize(self.settings_control.data()).is_err() {
+                                    self.notify.error("Failed initializing game agent.");
+                                    return;
+                                };
+
+                                self.remote = Some(remote);
+                                self.notify.success("Succesfully attached to game");
+                            }
+                    });
+
+                    if ui.button("Settings").clicked() {
+                        self.settings_open = true;
+                    }
                 });
-
-            ui.add_enabled_ui(self.process.is_some(), |ui| {
-                if ui.button("Attach to game").clicked()
-                    && let Some(process) = self.process.as_ref() {
-
-                    let Ok(remote) = RemoteGame::connect(process) else {
-                        self.notify.error("Failed attaching to game.");
-                        return;
-                    };
-
-                    if remote.initialize(self.settings_control.data()).is_err() {
-                        self.notify.error("Failed initializing game agent.");
-                        return;
-                    };
-
-                    self.remote = Some(remote);
-                    self.notify.success("Succesfully attached to game");
-                }
             });
-
-            if ui.button("⚙ Settings").clicked() {
-                self.settings_open = true;
-            }
         });
     }
 
@@ -206,14 +218,14 @@ impl CameraControlApp {
 
                 ui.separator();
 
-                if ui.button("💾 Save and apply").clicked() {
+                if ui.button("Save and apply").clicked() {
                     flush_settings = true;
                 }
 
                 ui.with_layout(
                     Layout::default().with_cross_align(Align::RIGHT),
                     |ui| {
-                        if ui.button("⬅ Back").clicked() {
+                        if ui.button("Back").clicked() {
                             self.settings_open = false;
                         }
                     },
@@ -277,7 +289,7 @@ impl CameraControlApp {
                 }
 
                 if !self.timeline_control.playing() {
-                    if ui.button("Play ▶").clicked() {
+                    if ui.button("Play").clicked() {
                         if let Err(e) = remote.set_camera_mode(self.camera_mode) {
                             self.notify.error(format!("Could not start playing path: {e}"));
                             return;
@@ -291,7 +303,7 @@ impl CameraControlApp {
                         self.camera_mode = CameraMode::Playback;
                         self.timeline_control.play();
                     }
-                } else if ui.button("Stop ⏹️").clicked() {
+                } else if ui.button("Stop").clicked() {
                     if let Err(e) = remote.set_playback_state(
                         false,
                         self.timeline_control.time(),
@@ -321,6 +333,10 @@ impl CameraControlApp {
             ui.separator();
 
             self.world_control.update(ui, remote, &mut self.notify);
+
+            ui.separator();
+
+            self.playback_control.update(ui, remote, &mut self.notify);
         });
 
         TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
@@ -328,7 +344,6 @@ impl CameraControlApp {
                 ui,
                 remote,
                 &mut self.notify,
-                self.settings_control.data(),
             ) {
                 Some(TimelineControlCommand::PlaybackDone) => {
                     self.camera_mode = CameraMode::Freecam;
@@ -337,7 +352,7 @@ impl CameraControlApp {
                     }
                 },
                 Some(TimelineControlCommand::Scrub) => {
-                    self.camera_mode = CameraMode::Playback;
+                    self.camera_mode = CameraMode::Freecam;
                     if let Err(e) = remote.set_camera_mode(self.camera_mode) {
                         self.notify.error(format!("Could not switch camera mode to playback: {e}"));
                     }

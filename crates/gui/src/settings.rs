@@ -1,12 +1,12 @@
 use std::{fs, path::PathBuf};
 
 use directories::ProjectDirs;
-use eframe::egui::{Context, DragValue, Grid, Key, ScrollArea, Ui};
+use eframe::egui::{Context, Grid, Key, ScrollArea, Ui};
 use protocol::{SettingsData, keybind::{KeybindInput, KeybindMapping}};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::controls::{labeled_control, panel_header};
+use crate::controls::panel_header;
 
 #[derive(Debug, Error)]
 pub enum SettingsError {
@@ -80,7 +80,6 @@ impl From<SettingsFormat> for SettingsData {
 impl From<SettingsDataV1> for SettingsData {
     fn from(val: SettingsDataV1) -> Self {
         SettingsData {
-            time_between_created_keyframes: 10.0,
             keybinds: KeybindMapping::default(),
         }
     }
@@ -112,32 +111,7 @@ impl SettingsControl {
     }
 
     pub fn update(&mut self, ui: &mut Ui, ctx: &Context) {
-        self.keyframe_controls(ui);
         self.keybind_controls(ui, ctx);
-    }
-
-    fn keyframe_controls(&mut self, ui: &mut Ui) {
-        panel_header(ui, "Keyframes");
-
-        ui.horizontal(|ui| {
-            labeled_control(ui, "Time between created keyframes", |ui| {
-                ui.add(
-                    DragValue::new(&mut self.data.time_between_created_keyframes)
-                        .speed(1.0)
-                        .suffix("s")
-                        .range(1.00..=30.0),
-                );
-            });
-
-            // labeled_control(ui, "Path duration", |ui| {
-            //     ui.add(
-            //         DragValue::new(&mut self.data.path_duration)
-            //             .speed(1.0)
-            //             .suffix("s")
-            //             .range(30.00..=240.0),
-            //     );
-            // });
-        });
     }
 
     fn keybind_controls(&mut self, ui: &mut Ui, ctx: &Context) {

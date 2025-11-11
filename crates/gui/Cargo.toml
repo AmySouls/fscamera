@@ -4,7 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-eframe = "0.31"
+eframe = "0.33"
+egui_extras = { version = "0.33", features = ["gif"] }
 rfd = "0.15"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -13,7 +14,7 @@ protocol.workspace = true
 dll-syringe.workspace = true
 thiserror.workspace = true
 gilrs.workspace = true
-egui-notify = "0.19.0"
+egui-notify = "0.21.0"
 directories = "6"
 smol = "2"
 futures = "0.3"

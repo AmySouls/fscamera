@@ -12,12 +12,13 @@ mod game;
 mod world;
 mod freecam;
 mod timeline;
+mod playback;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default()
             .with_always_on_top()
-            .with_inner_size((800.0, 400.0)),
+            .with_inner_size((500.0, 600.0)),
         ..Default::default()
     };
 

@@ -7,6 +7,15 @@ use crate::keybind::KeybindMapping;
 pub mod keyframe;
 pub mod keybind;
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AgentState {
+    pub camera_mode: CameraMode,
+    pub gamespeed_enabled: bool,
+    pub debug_pause_enabled: bool,
+    pub hud_disabled: bool,
+    pub freecam_locked: bool,
+}
+
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum CameraMode {
     /// Game is in full control of the camera.
@@ -17,28 +26,26 @@ pub enum CameraMode {
     Playback,
 }
 
+#[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
 pub enum InboundGameControlEvent {
     Initialize { settings: SettingsData },
     Settings { settings: SettingsData },
     SetFreecamMovementSpeed { value: f32 },
     SetFreecamRotationSpeed { value: f32 },
-
     SetCameraMode { mode: CameraMode },
     SetFreecamLocked { locked: bool },
-
     SetFreecamFov { fov: f32 },
     SetHudDisabled { disabled: bool },
     SetDebugPauseEnabled { enabled: bool },
-
-    SetTimeOfDay { hours: u8, minutes: u8, seconds: u8 },
+    SetTimeOfDay { hours: u8, minutes: u8 },
     SetCharacterNoDead { enabled: bool },
     SetCharacterNoMove { enabled: bool },
     SetGameSpeedMultiplier { value: f32 },
     SetGameSpeedMultiplierEnabled { enabled: bool },
-
     SetKeyframes { keyframes: Vec<Keyframe> },
     SetPlaybackState { playing: bool, time: f32 },
+    SetPlaybackSettings { settings: PlaybackSettingsData },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -56,7 +63,6 @@ pub enum OutboundGameControlEvent {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CameraState {
-    pub map_id: i32,
     pub position: Vec3,
     pub orientation: Quat,
     pub fov: f32,
@@ -84,19 +90,24 @@ pub enum RemoteError {
     AcquireWorldChrMan,
 }
 
-// TODO: alternative gamespeed for playback mode
-// TODO: turn off debug pause when playback mode starts
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SettingsData {
-    pub time_between_created_keyframes: f32,
     pub keybinds: KeybindMapping,
 }
 
-impl Default for SettingsData {
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PlaybackSettingsData {
+    pub gamespeed_enabled_on_playback: bool,
+    pub gamespeed_multiplier: f32,
+    pub unpause_on_playback: bool,
+}
+
+impl Default for PlaybackSettingsData {
     fn default() -> Self {
         Self {
-            time_between_created_keyframes: 10.0,
-            keybinds: KeybindMapping::default(),
+            gamespeed_enabled_on_playback: true,
+            gamespeed_multiplier: 1.0f32,
+            unpause_on_playback: true,
         }
     }
 }
