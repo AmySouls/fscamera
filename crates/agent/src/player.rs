@@ -1,6 +1,6 @@
 use crate::game::get_offsets;
-use crate::game::WorldChrMan;
-use fromsoft_shared::Program;
+use nightreign::cs::WorldChrMan;
+use fromsoftware_shared::Program;
 use pelite::pe64::{Pe, Va};
 
 pub struct Player {

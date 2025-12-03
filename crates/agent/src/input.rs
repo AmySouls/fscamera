@@ -3,8 +3,8 @@ use std::mem::transmute;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crossbeam::queue::SegQueue;
-use eldenring::cs::CSWindowImp;
-use fromsoft_shared::get_instance;
+use fromsoftware_shared::FromStatic;
+use nightreign::cs::CSWindowImp;
 use retour::static_detour;
 use windows::core::{s, w};
 use windows::Win32::Foundation::HMODULE;
@@ -242,7 +242,7 @@ pub unsafe fn setup_hook() {
 }
 
 pub fn is_game_focussed() -> bool {
-    let Some(cs_window) = (unsafe { get_instance::<CSWindowImp>() }) else {
+    let Ok(cs_window) = (unsafe { CSWindowImp::instance() }) else {
         return false;
     };
 

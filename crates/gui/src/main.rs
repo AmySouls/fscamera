@@ -18,7 +18,7 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default()
             .with_always_on_top()
-            .with_inner_size((500.0, 600.0)),
+            .with_inner_size((600.0, 800.0)),
         ..Default::default()
     };
 

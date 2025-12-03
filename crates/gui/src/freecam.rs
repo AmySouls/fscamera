@@ -1,12 +1,14 @@
 use eframe::egui::{Ui};
 use egui_notify::Toasts;
 
-use crate::{controls::{drag_fov, drag_percentage, labeled_control, panel_header}, game::RemoteGame};
+use crate::{controls::{drag_fov, drag_percentage, drag_percentage_modifier, labeled_control, panel_header}, game::RemoteGame};
 
 pub struct FreeCamControl {
     locked: bool,
     movement_speed: f32,
     rotation_speed: f32,
+    slow_modifier: f32,
+    fast_modifier: f32,
     fov: f32,
 }
 
@@ -16,6 +18,8 @@ impl Default for FreeCamControl {
             locked: false,
             movement_speed: 1.0,
             rotation_speed: 1.0,
+            slow_modifier: 0.25,
+            fast_modifier: 4.0,
             fov: 48.0f32.to_radians(),
         }
     }
@@ -69,6 +73,36 @@ impl FreeCamControl {
                         notify.error(format!("Could not change freecam rotation speed: {e}"));
                     }
                 });
+            });
+        });
+
+        ui.horizontal(|ui| {
+            labeled_control(ui, "Slow modifier speed", |ui| {
+                if drag_percentage_modifier(
+                    ui,
+                    "",
+                    &mut self.slow_modifier,
+                    0.01..=1.0
+                )
+                    .changed()
+                        && let Err(e) = remote.set_freecam_speed_modifiers(self.slow_modifier, self.fast_modifier) {
+                            notify.error(format!("Could not change freecam movement speed: {e}"));
+                }
+
+            });
+
+            labeled_control(ui, "Fast modifier speed", |ui| {
+                if drag_percentage_modifier(
+                    ui,
+                    "",
+                    &mut self.fast_modifier,
+                    1.00..=8.0
+                )
+                    .changed()
+                        && let Err(e) = remote.set_freecam_speed_modifiers(self.slow_modifier, self.fast_modifier) {
+                            notify.error(format!("Could not change freecam movement speed: {e}"));
+                }
+
             });
         });
     }

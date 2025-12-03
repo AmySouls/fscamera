@@ -1,3 +1,5 @@
+use std::ops::RangeInclusive;
+
 use eframe::egui::{DragValue, Response, RichText, Slider, Ui};
 
 pub(crate) fn drag_fov(ui: &mut Ui, label: &str, radians: &mut f32) -> Response {
@@ -33,6 +35,21 @@ pub(crate) fn drag_percentage(ui: &mut Ui, label: &str, multiple: &mut f32, log:
 
     response
 }
+
+pub(crate) fn drag_percentage_modifier(ui: &mut Ui, label: &str, multiple: &mut f32, range: RangeInclusive<f32>) -> Response {
+    let mut percentage = *multiple * 100.0;
+
+    let response = ui.add(
+        Slider::new(&mut percentage, range)
+            .suffix("%")
+            .text(label)
+    );
+
+    *multiple = (percentage / 100.0).clamp(0.001, 10.0);
+
+    response
+}
+
 
 #[inline]
 pub(crate) fn panel_header(ui: &mut Ui, label: &str) {

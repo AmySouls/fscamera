@@ -1,4 +1,4 @@
-use camera::freecam::FreeCamInput;
+use camera::freecam::{FreeCamInput, SpeedModifier};
 use protocol::{
     keybind::{KeybindInput, KeybindMapping},
     OutboundGameControlEvent,
@@ -131,9 +131,9 @@ impl Keybinds {
 
         // Speed modifiers
         Self::input_active(input, &KeybindInput::KeyPressed(0xA4))
-            .then(|| freecam_input.speed_modifier = 4.0);
+            .then(|| freecam_input.speed_modifier = SpeedModifier::Fast);
         Self::input_active(input, &KeybindInput::KeyPressed(0xA2))
-            .then(|| freecam_input.speed_modifier = 1.0 / 4.0);
+            .then(|| freecam_input.speed_modifier = SpeedModifier::Slow);
 
         freecam_input
     }

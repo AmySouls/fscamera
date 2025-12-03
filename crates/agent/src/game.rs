@@ -1,7 +1,6 @@
 use std::sync::LazyLock;
 
-use eldenring::cs::CSPersCam;
-use fromsoft_shared::{OwnedPtr, Program};
+use fromsoftware_shared::Program;
 use pelite::pe::Pe;
 use protocol::RemoteError;
 
@@ -90,89 +89,7 @@ pub(crate) fn get_offsets() -> Result<&'static GameOffsets, &'static RemoteError
 }
 
 #[repr(C)]
-/// Source of name: RTTI
-#[fromsoft_shared::singleton("CSCamera")]
-pub struct CSCamera {
-    pub pers_cam_1: OwnedPtr<CSPersCam>,
-    pub pers_cam_2: OwnedPtr<CSPersCam>,
-    pub pers_cam_3: OwnedPtr<CSPersCam>,
-    pub pers_cam_4: OwnedPtr<CSPersCam>,
-
-    // 0b00100000 // Copy from pers_cam_4 into pers_cam_1
-    // 0b00010000 // Copy from pers_cam_3 into pers_cam_1
-    // 0b00001000 // Copy from pers_cam_2 into pers_cam_1
-    // 0b00000100 // Copy from pers_cam_4 into pers_cam_1
-    // 0b00000010 // Copy from pers_cam_4 into pers_cam_1
-    // 0b00000001 // Copy from pers_cam_2 into pers_cam_1
-    pub camera_mask: u32,
-
-    unk24: u32,
-    unk28: usize,
-}
-
-#[repr(C)]
-#[fromsoft_shared::singleton("CSFlipper")]
-pub struct CSFlipperImp {
-    unk0: [u8; 0x2D4],
-    pub time_multiplier: f32,
-}
-
-#[repr(C)]
-#[fromsoft_shared::singleton("WorldAreaTime")]
-pub struct WorldAreaTime {
-    unk0: [u8; 0x28],
-    pub request_hour: u32,
-    pub request_minute: u32,
-    pub request_second: u32,
-}
-
-#[repr(C)]
 pub struct MoveMapStep {
     unk0: [u8; 0x130],
     pub debug_pause: bool,
-}
-
-#[repr(C)]
-#[fromsoft_shared::singleton("WorldChrMan")]
-pub struct WorldChrMan {
-    unk0: [u8; 0x174e8],
-    pub main_player: Option<OwnedPtr<ChrIns>>,
-}
-
-#[repr(C)]
-pub struct ChrIns {
-    unk0: [u8; 0x38],
-    pub current_map_id: i32,
-    pub previous_map_id: i32,
-    unk40: [u8; 0x20],
-    pub chr_ctrl: OwnedPtr<ChrCtrl>,
-    unk68: [u8; 0x150],
-    pub modules: OwnedPtr<ChrModules>,
-}
-
-#[repr(C)]
-pub struct ChrCtrl {
-    unk0: [u8; 0xf0],
-    pub flags: u8,
-}
-
-#[repr(C)]
-pub struct ChrModules {
-    pub data: OwnedPtr<ChrDataModule>,
-    unk8: [u8; 0x68],
-    pub fall: OwnedPtr<CSChrFallModule>,
-}
-
-#[repr(C)]
-pub struct ChrDataModule {
-    unk0: [u8; 0x189],
-    pub no_dead: bool,
-}
-
-#[repr(C)]
-pub struct CSChrFallModule {
-    vtable: i64,
-    unk8: [u8; 0x10],
-    pub fall_timer: f32,
-    unk1c: u32,
 }

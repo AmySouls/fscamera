@@ -155,6 +155,10 @@ impl RemoteGame {
         self.post_event(InboundGameControlEvent::SetFreecamRotationSpeed { value })
     }
 
+    pub fn set_freecam_speed_modifiers(&self, slow: f32, fast: f32) -> Result<(), RemoteError> {
+        self.post_event(InboundGameControlEvent::SetFreecamSpeedModifiers { slow, fast })
+    }
+
     pub fn set_debug_pause_enabled(&self, enabled: bool) -> Result<(), RemoteError> {
         self.post_event(InboundGameControlEvent::SetDebugPauseEnabled { enabled })
     }

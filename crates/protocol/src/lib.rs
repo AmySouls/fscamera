@@ -33,6 +33,7 @@ pub enum InboundGameControlEvent {
     Settings { settings: SettingsData },
     SetFreecamMovementSpeed { value: f32 },
     SetFreecamRotationSpeed { value: f32 },
+    SetFreecamSpeedModifiers { slow: f32, fast: f32 },
     SetCameraMode { mode: CameraMode },
     SetFreecamLocked { locked: bool },
     SetFreecamFov { fov: f32 },
@@ -105,9 +106,9 @@ pub struct PlaybackSettingsData {
 impl Default for PlaybackSettingsData {
     fn default() -> Self {
         Self {
-            gamespeed_enabled_on_playback: true,
+            gamespeed_enabled_on_playback: false,
             gamespeed_multiplier: 1.0f32,
-            unpause_on_playback: true,
+            unpause_on_playback: false,
         }
     }
 }

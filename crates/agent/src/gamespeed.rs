@@ -1,4 +1,4 @@
-use crate::game::CSFlipperImp;
+use nightreign::cs::CSFlipperImp;
 
 pub struct GameSpeed {
     enabled: bool,

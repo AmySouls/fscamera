@@ -5,7 +5,7 @@ pub struct FreeCamInput {
     pub forward: f32,
     pub right: f32,
     pub up: f32,
-    pub speed_modifier: f32,
+    pub speed_modifier: SpeedModifier,
     pub mouse_delta: Vec2,
     pub roll_delta: f32,
     pub fov_delta: f32,
@@ -17,7 +17,7 @@ impl Default for FreeCamInput {
             forward: 0.0,
             right: 0.0,
             up: 0.0,
-            speed_modifier: 1.0,
+            speed_modifier: SpeedModifier::None,
             mouse_delta: Vec2::ZERO,
             roll_delta: 0.0,
             fov_delta: 0.0,
@@ -25,10 +25,17 @@ impl Default for FreeCamInput {
     }
 }
 
+#[derive(Default)]
+pub enum SpeedModifier {
+    #[default]
+    None,
+    Slow,
+    Fast,
+}
+
 /// Freecam meant for looking around and setting up paths.
 pub struct FreeCam {
     pub camera: Camera,
-    /// Is the freecam locked in terms of movement?
     pub locked: bool,
     pub target_translation: Vec3,
     /// Level rotation as to now have yaw and pitch deltas be contaminated by roll.
@@ -54,6 +61,9 @@ pub struct FreeCam {
     pub movement_speed_modifier: f32,
     pub rotation_speed_modifier: f32,
     pub roll_speed_modifier: f32,
+
+    pub slow_speed_modifier: f32,
+    pub fast_speed_modifier: f32,
 
     translation_smooth_time: f32,
     orientation_smooth_time: f32,
@@ -86,6 +96,10 @@ impl FreeCam {
 
             movement_speed_modifier: 1.0,
             rotation_speed_modifier: 1.0,
+
+            slow_speed_modifier: 0.25,
+            fast_speed_modifier: 4.0,
+
             roll_speed_modifier: 1.0,
             translation_smooth_time: 0.10,
             orientation_smooth_time: 0.12,
@@ -101,16 +115,22 @@ impl FreeCam {
     }
 
     pub fn update(&mut self, input: &FreeCamInput, delta: f32) {
+        let speed_modifier = match input.speed_modifier {
+            SpeedModifier::None => 1.0,
+            SpeedModifier::Slow => self.slow_speed_modifier.clamp(0.01, 1.0),
+            SpeedModifier::Fast => self.fast_speed_modifier.clamp(1.0, 8.0),
+        };
+
         // Dont handle input if cam is locked.
         if !self.locked {
             if input.mouse_delta != Vec2::ZERO {
                 let dx = input.mouse_delta.x
-                    * input.speed_modifier.clamp(0.0, 1.0)
+                    * speed_modifier
                     * self.rotation_speed
                     * self.rotation_speed_modifier;
 
                 let dy = input.mouse_delta.y
-                    * input.speed_modifier.clamp(0.0, 1.0)
+                    * speed_modifier
                     * self.rotation_speed
                     * self.rotation_speed_modifier;
 
@@ -126,12 +146,12 @@ impl FreeCam {
 
             if input.roll_delta != 0.0 {
                 self.target_roll_angle +=
-                    input.roll_delta * self.roll_speed * delta * input.speed_modifier;
+                    input.roll_delta * self.roll_speed * delta * speed_modifier;
             }
 
             if input.fov_delta != 0.0 {
                 self.target_fov +=
-                    input.fov_delta * self.fov_change_rate * delta * input.speed_modifier;
+                    input.fov_delta * self.fov_change_rate * delta * speed_modifier;
 
                 // Ensure we dont flip the matrix
                 self.target_fov = self.target_fov.clamp(0.0, 180.0);
@@ -152,7 +172,7 @@ impl FreeCam {
                 velocity = velocity.normalize();
             }
 
-            let speed = self.movement_speed * self.movement_speed_modifier * input.speed_modifier;
+            let speed = self.movement_speed * self.movement_speed_modifier * speed_modifier;
             self.target_translation += velocity * speed * delta;
         }
 

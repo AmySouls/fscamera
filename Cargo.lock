@@ -130,15 +130,13 @@ dependencies = [
  "camera",
  "crossbeam",
  "dll-syringe",
- "eldenring",
- "eldenring-util",
- "from-singleton",
  "fromsoftware-shared",
  "gilrs",
  "glam",
  "log",
  "log-panics",
  "log4rs",
+ "nightreign",
  "pelite",
  "protocol",
  "retour",
@@ -550,26 +548,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e764a1d40d510daf35e07be9eb06e75770908c27d411ee6c92109c9840eaaf7"
 
 [[package]]
-name = "bitfield"
-version = "0.19.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62a3a774b2fcac1b726922b921ebba5e9fe36ad37659c822cf8ff2c1e0819892"
-dependencies = [
- "bitfield-macros",
-]
-
-[[package]]
-name = "bitfield-macros"
-version = "0.19.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52511b09931f7d5fe3a14f23adefbc23e5725b184013e96c8419febb61f14734"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.106",
-]
-
-[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -927,28 +905,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
-name = "cstl-sys"
-version = "2.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93cb3efebcf02ee15186d55068b8394bf5df33331feabda4f2cdcf3573d7c659"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "cursor-icon"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
-
-[[package]]
-name = "cxx-stl"
-version = "3.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb3ba5d51c332fde0852e7ec374e51d297361cbe0e8007f075765199951c4eb9"
-dependencies = [
- "cstl-sys",
-]
 
 [[package]]
 name = "dataview"
@@ -1247,58 +1207,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
-name = "eldenring"
-version = "0.11.0"
-dependencies = [
- "bitfield",
- "cxx-stl",
- "encoding_rs",
- "from-singleton",
- "fromsoftware-shared",
- "nalgebra",
- "nalgebra-glm",
- "pelite",
- "regex",
- "serde",
- "serde_derive",
- "thiserror 1.0.69",
- "tracing",
- "vtable-rs",
- "windows 0.54.0",
-]
-
-[[package]]
-name = "eldenring-util"
-version = "0.11.0"
-dependencies = [
- "eldenring",
- "fromsoftware-shared",
- "pelite",
- "steamworks",
- "steamworks-sys",
- "thiserror 1.0.69",
- "tracing",
- "undname",
- "vtable-rs",
- "windows 0.54.0",
-]
-
-[[package]]
 name = "emath"
 version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c615516cdceec867065f20d7db13d8eb8aedd65c9e32cc0c7c379380fa42e6e8"
 dependencies = [
  "bytemuck",
-]
-
-[[package]]
-name = "encoding_rs"
-version = "0.8.35"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
-dependencies = [
- "cfg-if",
 ]
 
 [[package]]
@@ -1540,6 +1454,7 @@ dependencies = [
  "nalgebra",
  "nalgebra-glm",
  "pelite",
+ "thiserror 1.0.69",
  "undname",
  "vtable-rs",
  "windows 0.54.0",
@@ -2619,6 +2534,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873"
 dependencies = [
  "jni-sys",
+]
+
+[[package]]
+name = "nightreign"
+version = "0.11.0"
+dependencies = [
+ "fromsoftware-shared",
+ "pelite",
+ "windows 0.54.0",
 ]
 
 [[package]]
@@ -3968,24 +3892,6 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-
-[[package]]
-name = "steamworks"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37769f3fb7cc26bf69609e455a606c073d7332ddd45742b2317d72abafc04d8e"
-dependencies = [
- "bitflags 1.3.2",
- "lazy_static",
- "steamworks-sys",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "steamworks-sys"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dee9311cd52318d225220e3f52414958fbac21b75541a6543d33fbdda68797b6"
 
 [[package]]
 name = "stopwatch2"
