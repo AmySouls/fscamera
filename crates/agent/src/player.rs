@@ -1,26 +1,18 @@
 use crate::game::get_offsets;
-use nightreign::cs::WorldChrMan;
+use crate::game_compat::WorldChrMan;
 use fromsoftware_shared::Program;
 use pelite::pe64::{Pe, Va};
 
 pub struct Player {
     pub no_dead: bool,
     pub no_move: bool,
-
-    no_dead_va: Va,
 }
 
 impl Default for Player {
     fn default() -> Self {
-        let offsets = get_offsets().map_err(|e| e.clone()).unwrap();
-        let program = Program::current();
-        let no_dead_va = program.rva_to_va(offsets.no_dead_flag).unwrap();
-
         Self {
             no_dead: false,
             no_move: false,
-
-            no_dead_va,
         }
     }
 }
@@ -28,13 +20,28 @@ impl Default for Player {
 impl Player {
     pub fn apply(&self, world_chr_man: &mut WorldChrMan) {
         if let Some(player) = world_chr_man.main_player.as_mut() {
-            let mut chr_control_flags = player.chr_ctrl.flags & 0b11011111;
-            if !self.no_move {
-                chr_control_flags |= 0b00100000;
+            #[cfg(feature = "nightreign")]
+            {
+                if self.no_move { player.chr_ins.chr_ctrl.flags |= 0b00100000 };
+                //else { player.chr_ins.chr_ctrl.flags &= !0b11111011; };
+                if self.no_dead { player.chr_ins.module_container.data.debug_flags |= 0b00000100 }
+                else { player.chr_ins.module_container.data.debug_flags &= !0b11111011; };
             }
 
-            player.chr_ctrl.flags = chr_control_flags;
-            unsafe { *(self.no_dead_va as *mut bool) = self.no_dead };
+            #[cfg(not(any(feature = "nightreign", feature = "darksouls3")))]
+            {
+                player.chr_ins.debug_flags.set_disabled_movement(self.no_move);
+                if self.no_dead { player.chr_ins.module_container.data.debug_flags |= 0b00000001 }
+                else { player.chr_ins.module_container.data.debug_flags &= !0b11111110 }
+            }
+
+            #[cfg(feature = "darksouls3")]
+            {
+                if self.no_move { player.chr_ins.debug_flags |= 0b10000000 }
+                else { player.chr_ins.debug_flags &= !0b01111111; };
+                if self.no_dead { player.chr_ins.modules.data.debug_flags |= 0b00000100 }
+                else { player.chr_ins.modules.data.debug_flags &= !0b11111011; };
+            }
         }
     }
 }

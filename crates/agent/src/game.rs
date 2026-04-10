@@ -80,16 +80,25 @@ static GAME_OFFSETS: LazyLock<Result<GameOffsets, RemoteError>> = LazyLock::new(
             scaleform_update_b: 0x56be3af,
             no_dead_flag: 0x3b9ab24,
         },
+        ("ELDEN RING NIGHTREIGN", "1.3.2.0") => GameOffsets {
+            move_map_step: 0xc35830,
+            scaleform_update_b: 0xebbc30,
+            no_dead_flag: 0x0,
+        },
+        ("DARK SOULS™ III", "1.15.2.0") => GameOffsets {
+            move_map_step: 0x8f2ca0,
+            scaleform_update_b: 0xe504d0,
+            no_dead_flag: 0x0,
+        },
+        ("ELDEN RING™", "2.6.1.0") => GameOffsets {
+            move_map_step: 0xaf7de0,
+            scaleform_update_b: 0xd6e7a0,
+            no_dead_flag: 0x0,
+        },
         _ => return Err(RemoteError::UnknownGame),
     })
 });
 
 pub(crate) fn get_offsets() -> Result<&'static GameOffsets, &'static RemoteError> {
     (*GAME_OFFSETS).as_ref()
-}
-
-#[repr(C)]
-pub struct MoveMapStep {
-    unk0: [u8; 0x130],
-    pub debug_pause: bool,
 }

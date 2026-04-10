@@ -46,6 +46,7 @@ impl WorldControl {
                 }
             });
 
+            #[cfg(not(feature = "darksouls3"))]
             labeled_control(ui, "Time of day", |ui| {
                 // Convert minutes to hh:mm string
                 let hours = self.time_of_day / 60;

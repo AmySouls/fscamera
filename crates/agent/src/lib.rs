@@ -9,11 +9,13 @@ use camera::playback::PlaybackCam;
 use camera::Camera;
 use crossbeam::queue::SegQueue;
 use fromsoftware_shared::F32Matrix4x4;
+use fromsoftware_shared::F32ModelMatrix;
 use fromsoftware_shared::F32Vector4;
 use fromsoftware_shared::FromStatic;
 use fromsoftware_shared::{arxan, OwnedPtr, Program, SharedTaskImpExt};
 use game::get_offsets;
-use game::MoveMapStep;
+use game_compat::CSFlipperImp;
+use game_compat::MoveMapStep;
 use glam::Mat3;
 use glam::Vec3;
 use log::LevelFilter;
@@ -23,10 +25,12 @@ use log4rs::{
     encode::pattern::PatternEncoder,
     Config,
 };
-use nightreign::cs::{
-    CSCamera, CSFlipperImp, CSPersCam, CSTaskGroupIndex, CSTaskImp, WorldAreaTime, WorldChrMan,
+use game_compat::{
+    CSCamera, CSPersCam, CSTaskGroupIndex, CSTaskImp, WorldChrMan, FD4TaskData
 };
-use nightreign::fd4::FD4TaskData;
+#[cfg(not(feature = "darksouls3"))]
+use game_compat::WorldAreaTime;
+
 use pelite::pe64::Pe;
 use protocol::AgentState;
 use protocol::CameraMode;
@@ -47,6 +51,7 @@ mod gamespeed;
 mod input;
 mod keybind;
 mod player;
+mod game_compat;
 
 const SPACE: Mat3 = Mat3::from_cols(Vec3::X, Vec3::Y, Vec3::Z);
 
@@ -56,8 +61,8 @@ dll_syringe::payload_procedure! {
             return Err(RemoteError::AcquireCSCamera);
         };
 
-        let position = cs_camera.pers_cam_1.position();
-        let F32Matrix4x4(rx, ry, rz, _) = cs_camera.pers_cam_1.matrix;
+        let position = cs_camera.pers_cam_1.matrix.3;
+        let F32ModelMatrix(rx, ry, rz, _) = cs_camera.pers_cam_1.matrix;
 
         let rot = glam::Mat3::from_cols(
             glam::Vec3::new(rx.0, rx.1, rx.2),
@@ -200,6 +205,8 @@ dll_syringe::payload_procedure! {
                 gamespeed.set_playback_multiplier_enabled(
                     playback_settings.gamespeed_enabled_on_playback && camera_mode == CameraMode::Playback
                 );
+
+                #[cfg(not(feature = "darksouls3"))]
                 gamespeed.apply(flipper);
 
                 // Update input state for reading.
@@ -256,7 +263,7 @@ dll_syringe::payload_procedure! {
                 // Since this might sample the current camera state, we should run this
                 // after applying the matrix patches.
                 keybinds.execute_general_bindings(&mut input);
-            }, CSTaskGroupIndex::Draw_Pre);
+            }, CSTaskGroupIndex::CameraStep);
         }
 
         // Fuck the code restoration routines as they remove MoveMapStep hooks
@@ -280,7 +287,7 @@ dll_syringe::payload_procedure! {
                 ).unwrap()
                 .enable().unwrap();
         }
-
+        
         // Hook the Scaleform update so we can conditionally skip calling it, causing the rendered
         // scaleform output to never get copied into the final render.
         let scaleform_update_b_va = program.rva_to_va(offsets.scaleform_update_b).unwrap();
@@ -320,11 +327,15 @@ fn handle_gui_message(
             keybinds.set_mapping(settings.keybinds);
         }
         InboundGameControlEvent::SetTimeOfDay { hours, minutes } => {
-            let Ok(world_area_time) = (unsafe { WorldAreaTime::instance() }) else {
-                return;
-            };
+            #[cfg(not(feature = "darksouls3"))]
+            {
+                let Ok(world_area_time) = (unsafe { WorldAreaTime::instance() }) else {
+                    return;
+                };
 
-            world_area_time.request_time(hours as _, minutes as _, 0);
+                world_area_time.request_time(hours as _, minutes as _, 0);
+            }
+            
         }
         InboundGameControlEvent::SetCharacterNoDead { enabled } => player.no_dead = enabled,
         InboundGameControlEvent::SetCharacterNoMove { enabled } => player.no_move = enabled,
@@ -460,6 +471,7 @@ static_detour! {
     static MOVE_MAP_STEP: unsafe extern "C" fn(OwnedPtr<MoveMapStep>, usize);
     static SCALEFORM_UPDATE_B: unsafe extern "C" fn(usize, usize);
 }
+
 
 static FREECAM_LOCKED: AtomicBool = AtomicBool::new(false);
 static DISABLE_HUD: AtomicBool = AtomicBool::new(false);

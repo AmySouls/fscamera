@@ -391,8 +391,8 @@ impl TimelineControl {
     fn spread_frames(&mut self) {
         self.keyframes.sort_by(|a, b| a.time.total_cmp(&b.time));
 
-        // Calculate required time between frames.
-        let spacing = self.path_duration / (self.keyframes.len() - 1) as f32;
+        // Calculate required time between frames.  
+        let spacing = self.path_duration / (self.keyframes.len().max(1) - 1) as f32;
 
         let mut current_time = 0.0;
         for kf in self.keyframes.iter_mut() {

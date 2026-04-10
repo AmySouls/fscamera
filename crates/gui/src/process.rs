@@ -2,11 +2,14 @@ use std::fmt::Display;
 use sysinfo::{Pid, System};
 
 const SUPPORTED_GAMES: &[&str] = &[
-    // "eldenring.exe",
     // "armoredcore6.exe",
     // "sekiro.exe",
+    #[cfg(not(any(feature = "nightreign", feature = "darksouls3")))]
+    "eldenring.exe",
+    #[cfg(feature = "nightreign")]
     "nightreign.exe",
-    "start_protected_game.exe",
+    #[cfg(feature = "darksouls3")]
+    "DarkSoulsIII.exe",
 ];
 
 /// Retrieves a list of running games that we should support

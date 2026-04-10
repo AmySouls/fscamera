@@ -1,10 +1,9 @@
 use std::ffi::c_void;
 use std::mem::transmute;
 use std::sync::atomic::{AtomicBool, Ordering};
-
+use crate::game_compat::CSWindowImp;
 use crossbeam::queue::SegQueue;
 use fromsoftware_shared::FromStatic;
-use nightreign::cs::CSWindowImp;
 use retour::static_detour;
 use windows::core::{s, w};
 use windows::Win32::Foundation::HMODULE;

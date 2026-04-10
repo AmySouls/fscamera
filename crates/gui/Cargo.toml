@@ -3,6 +3,10 @@ name = "gui"
 version.workspace = true
 edition.workspace = true
 
+[features]
+nightreign = []
+darksouls3 = []
+
 [dependencies]
 eframe = "0.33"
 egui_extras = { version = "0.33", features = ["gif"] }

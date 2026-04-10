@@ -17,7 +17,6 @@ mod playback;
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: ViewportBuilder::default()
-            .with_always_on_top()
             .with_inner_size((600.0, 800.0)),
         ..Default::default()
     };
@@ -30,5 +29,5 @@ fn main() -> eframe::Result<()> {
 }
 
 pub(crate) fn program_title() -> String {
-    format!("Freecum+ v{}", env!("CARGO_PKG_VERSION"))
+    format!("Freecam+ v{}", env!("CARGO_PKG_VERSION"))
 }

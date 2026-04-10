@@ -346,10 +346,12 @@ impl CameraControlApp {
                 &mut self.notify,
             ) {
                 Some(TimelineControlCommand::PlaybackDone) => {
+                    /*
                     self.camera_mode = CameraMode::Freecam;
                     if let Err(e) = remote.set_camera_mode(self.camera_mode) {
                         self.notify.error(format!("Could not switch camera mode to freecam: {e}"));
                     }
+                     */
                 },
                 Some(TimelineControlCommand::Scrub) => {
                     self.camera_mode = CameraMode::Freecam;

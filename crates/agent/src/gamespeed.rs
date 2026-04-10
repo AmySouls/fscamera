@@ -1,4 +1,4 @@
-use nightreign::cs::CSFlipperImp;
+use crate::game_compat::CSFlipperImp;
 
 pub struct GameSpeed {
     enabled: bool,
@@ -37,11 +37,11 @@ impl GameSpeed {
 
     pub fn apply(&self, flipper: &mut CSFlipperImp) {
         if self.playback_multiplier_enabled {
-            flipper.time_multiplier = self.playback_multiplier;
+            flipper.game_speed = self.playback_multiplier;
         } else if self.enabled {
-            flipper.time_multiplier = self.multiplier;
-        } else if !self.enabled && flipper.time_multiplier != 1.0 {
-            flipper.time_multiplier = 1.0;
+            flipper.game_speed = self.multiplier;
+        } else if !self.enabled && flipper.game_speed != 1.0 {
+            flipper.game_speed = 1.0;
         }
     }
 }
