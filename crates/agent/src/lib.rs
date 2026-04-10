@@ -173,6 +173,11 @@ dll_syringe::payload_procedure! {
         unsafe { input::setup_hook() };
 
         {
+            #[cfg(feature = "darksouls3")]
+            let task_group = CSTaskGroupIndex::CameraStep;
+            #[cfg(not(feature = "darksouls3"))]
+            let task_group = CSTaskGroupIndex::Draw_Pre;
+
             // Hijack camera matrix by enqueueing a task to happen right before the draw happens.
             // It's very important that we do this before the draw and after the OG camera update.
             cs_task.run_recurring(move |_: &FD4TaskData| {
@@ -263,7 +268,7 @@ dll_syringe::payload_procedure! {
                 // Since this might sample the current camera state, we should run this
                 // after applying the matrix patches.
                 keybinds.execute_general_bindings(&mut input);
-            }, CSTaskGroupIndex::CameraStep);
+            }, task_group);
         }
 
         // Fuck the code restoration routines as they remove MoveMapStep hooks
